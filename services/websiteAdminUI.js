@@ -1,13 +1,13 @@
 import { db } from "../firebase/firebase.js";
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc 
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  deleteDoc
 } from "firebase/firestore";
 
 /**
@@ -511,7 +511,7 @@ export const websiteAdminUI = {
       try {
         const compressedBase64 = await compressImage(file, 1200, 0.82);
         this.updateService(index, "image", compressedBase64);
-        
+
         // Instant visual thumbnail update
         const previewEl = document.getElementById(`service-img-preview-${index}`);
         if (previewEl) {
@@ -551,8 +551,8 @@ export const websiteAdminUI = {
 
     const availableIcons = [
       // Current Library Amenities
-      "Snowflake", "Armchair", "Grid", "Wifi", "Plug", 
-      "VolumeX", "ShieldCheck", "Droplets", "Sparkles", "RefreshCw", 
+      "Snowflake", "Armchair", "Grid", "Wifi", "Plug",
+      "VolumeX", "ShieldCheck", "Droplets", "Sparkles", "RefreshCw",
       "Zap", "Sun", "Clock", "Wallet", "Heart", "Lock", "Car",
       // Popular Library, Study & Facility Icons
       "BookOpen", "Coffee", "Monitor", "Users", "CheckCircle",
@@ -589,9 +589,9 @@ export const websiteAdminUI = {
               <label class="facility-label">Icon</label>
               <select class="form-control form-control-sm" onchange="websiteAdminUI.handleIconSelect(${index}, this.value)">
                 ${isCustomIcon ? `<option value="${feature.icon}" selected>${feature.icon} (Custom)</option>` : ""}
-                ${availableIcons.map((ic) => 
-                  `<option value="${ic}" ${feature.icon === ic ? "selected" : ""}>${ic}</option>`
-                ).join("")}
+                ${availableIcons.map((ic) =>
+        `<option value="${ic}" ${feature.icon === ic ? "selected" : ""}>${ic}</option>`
+      ).join("")}
                 <option value="__custom_new__">+ Add Custom Icon Name...</option>
               </select>
             </div>
@@ -672,7 +672,7 @@ export const websiteAdminUI = {
       try {
         const compressedBase64 = await compressImage(file, 900, 0.8);
         this.updateFeature(index, "image", compressedBase64);
-        
+
         // Instant visual thumbnail update
         const previewEl = document.getElementById(`feature-img-preview-${index}`);
         if (previewEl) {
@@ -723,8 +723,8 @@ export const websiteAdminUI = {
       const card = document.createElement("div");
       card.className = `website-plan-card ${plan.featured ? "featured-card" : ""}`;
 
-      const benefits = Array.isArray(plan.benefits) && plan.benefits.length > 0 
-        ? plan.benefits 
+      const benefits = Array.isArray(plan.benefits) && plan.benefits.length > 0
+        ? plan.benefits
         : (Array.isArray(plan.benefitsEn) ? plan.benefitsEn : []);
 
       const benefitsListHtml = benefits.map((b, bIdx) => `
@@ -909,8 +909,8 @@ export const websiteAdminUI = {
     const featuredInput = document.getElementById(`plan-featured-${planId}`);
     const featured = featuredInput ? featuredInput.checked : (!!plan.featured);
 
-    const currentBenefits = Array.isArray(plan.benefits) && plan.benefits.length > 0 
-      ? plan.benefits 
+    const currentBenefits = Array.isArray(plan.benefits) && plan.benefits.length > 0
+      ? plan.benefits
       : (Array.isArray(plan.benefitsEn) ? plan.benefitsEn : []);
 
     const updates = {

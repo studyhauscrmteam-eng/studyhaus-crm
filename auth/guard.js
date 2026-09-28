@@ -82,7 +82,7 @@ export const initAuthGuard = () => {
           if (userDoc && !userDoc.role) {
             userDoc.role = "Student";
           }
-          
+
           if (userDoc && userDoc.role) {
             role = userDoc.role;
             localStorage.setItem("userRole", role);
@@ -111,7 +111,7 @@ export const initAuthGuard = () => {
             userDoc2 = await getDocument("students", actualDocId);
             if (!userDoc2) userDoc2 = await getDocument("users", actualDocId);
             if (!userDoc2) userDoc2 = await getDocument("users", user.uid);
-          } catch (_) {}
+          } catch (_) { }
 
           if (userDoc2 && (userDoc2.status === "disabled" || userDoc2.status === "Inactive" || userDoc2.status === "Old" || userDoc2.status === "Old Student")) {
             localStorage.setItem("forceUnauthorized", "true");
@@ -136,21 +136,21 @@ export const initAuthGuard = () => {
           const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
           // ── Update DOM ────────────────────────────────────────────────
-          const nameEl    = document.getElementById("current-user-name");
+          const nameEl = document.getElementById("current-user-name");
           const topbarNameEl = document.getElementById("topbar-user-name");
-          const roleEl    = document.getElementById("current-user-role");
+          const roleEl = document.getElementById("current-user-role");
           const topbarRoleEl = document.getElementById("topbar-user-role");
-          const avatarEl  = document.getElementById("current-user-avatar");
+          const avatarEl = document.getElementById("current-user-avatar");
           const topbarAvatarEl = document.getElementById("topbar-user-avatar");
-          const greetEl   = document.getElementById("dashboard-greeting");
+          const greetEl = document.getElementById("dashboard-greeting");
 
-          if (nameEl)   nameEl.textContent   = displayName;
+          if (nameEl) nameEl.textContent = displayName;
           if (topbarNameEl) topbarNameEl.textContent = displayName;
-          if (roleEl)   roleEl.textContent   = role;
+          if (roleEl) roleEl.textContent = role;
           if (topbarRoleEl) topbarRoleEl.textContent = role;
           if (avatarEl) avatarEl.textContent = initials;
           if (topbarAvatarEl) topbarAvatarEl.textContent = initials;
-          if (greetEl)  greetEl.textContent  = `${timeGreeting}, ${displayName.split(" ")[0]}!`;
+          if (greetEl) greetEl.textContent = `${timeGreeting}, ${displayName.split(" ")[0]}!`;
 
           // If on a protected page, check permissions
           protectRoute(role, currentPath);
@@ -174,7 +174,7 @@ export const initAuthGuard = () => {
       // User is NOT logged in
       localStorage.removeItem("userRole");
       localStorage.removeItem("userId");
-      
+
       if (localStorage.getItem("forceUnauthorized") === "true") {
         localStorage.removeItem("forceUnauthorized");
         window.location.href = "/unauthorized.html";

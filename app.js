@@ -1,11 +1,11 @@
 // ==================== STATUS TOGGLE (Open / Closed) ====================
 function toggleStatus() {
-  const btn  = document.getElementById('status-toggle');
+  const btn = document.getElementById('status-toggle');
   const text = btn.querySelector('.status-text');
   const isOpen = btn.classList.contains('open');
 
-  btn.classList.toggle('open',   !isOpen);
-  btn.classList.toggle('closed',  isOpen);
+  btn.classList.toggle('open', !isOpen);
+  btn.classList.toggle('closed', isOpen);
   text.textContent = isOpen ? 'Closed' : 'Open';
   showToast(isOpen ? 'Space marked as Closed' : 'Space marked as Open', isOpen ? 'warning' : 'success');
 }
@@ -14,14 +14,14 @@ function toggleStatus() {
 function toggleTheme() {
   const isLight = document.body.classList.toggle('light-mode');
   const moon = document.getElementById('icon-moon');
-  const sun  = document.getElementById('icon-sun');
+  const sun = document.getElementById('icon-sun');
 
   if (isLight) {
     if (moon) moon.style.display = 'block';
-    if (sun)  sun.style.display  = 'none';
+    if (sun) sun.style.display = 'none';
   } else {
     if (moon) moon.style.display = 'none';
-    if (sun)  sun.style.display  = 'block';
+    if (sun) sun.style.display = 'block';
   }
   // Persist preference
   localStorage.setItem('theme', isLight ? 'light' : 'dark');
@@ -34,13 +34,13 @@ function toggleTheme() {
     document.body.classList.add('light-mode');
   }
   const moon = document.getElementById('icon-moon');
-  const sun  = document.getElementById('icon-sun');
+  const sun = document.getElementById('icon-sun');
   if (isLight) {
     if (moon) moon.style.display = 'block';
-    if (sun)  sun.style.display  = 'none';
+    if (sun) sun.style.display = 'none';
   } else {
     if (moon) moon.style.display = 'none';
-    if (sun)  sun.style.display  = 'block';
+    if (sun) sun.style.display = 'block';
   }
 })();
 
@@ -125,13 +125,13 @@ function showToast(message, type = 'success') {
   const toast = document.createElement('div');
   toast.className = 'toast toast-' + type;
   toast.textContent = message;
-  
+
   if (typeof toast.showPopover === 'function') {
     toast.setAttribute('popover', 'manual');
   }
-  
+
   document.body.appendChild(toast);
-  
+
   if (typeof toast.showPopover === 'function') {
     toast.showPopover();
   }
@@ -167,10 +167,10 @@ toastStyles.textContent = `
 document.head.appendChild(toastStyles);
 
 // Override native alert with custom toast
-window.alert = function(msg) {
+window.alert = function (msg) {
   let type = 'info';
   const lowerMsg = String(msg).toLowerCase();
-  
+
   if (lowerMsg.includes('error') || lowerMsg.includes('fail') || lowerMsg.includes('invalid') || lowerMsg.includes('denied')) {
     type = 'error';
   } else if (lowerMsg.includes('success') || lowerMsg.includes('saved') || lowerMsg.includes('updated') || lowerMsg.includes('approved') || lowerMsg.includes('admitted')) {
@@ -178,7 +178,7 @@ window.alert = function(msg) {
   } else if (lowerMsg.includes('warning') || lowerMsg.includes('required') || lowerMsg.includes('missing') || lowerMsg.includes('please')) {
     type = 'warning';
   }
-  
+
   window.showToast(msg, type);
 };
 
@@ -397,65 +397,65 @@ if (analyticsPage) observer.observe(analyticsPage, { attributes: true, attribute
 document.querySelectorAll('#page-analytics .filter-tabs .filter-tab').forEach(tab => {
   tab.addEventListener('click', function () {
     const filterType = this.textContent.trim();
-    
+
     const subtitle = document.querySelector('#page-analytics .page-subtitle');
     const metricValues = document.querySelectorAll('#page-analytics .metric-value');
     const metricChanges = document.querySelectorAll('#page-analytics .metric-change');
     const chartBars = document.querySelectorAll('#page-analytics .bar');
-    
-    if (filterType === 'This Month') {
-      if(subtitle) subtitle.textContent = 'July 2024 performance overview';
-      if(metricValues[0]) metricValues[0].textContent = '₹71,000';
-      if(metricChanges[0]) { metricChanges[0].textContent = '↑ 12%'; metricChanges[0].className = 'metric-change positive'; }
-      if(metricValues[1]) metricValues[1].textContent = '8';
-      if(metricChanges[1]) { metricChanges[1].textContent = '↑ 3 vs last month'; metricChanges[1].className = 'metric-change positive'; }
-      if(metricValues[2]) metricValues[2].textContent = '68%';
-      if(metricChanges[2]) { metricChanges[2].textContent = '↑ 5%'; metricChanges[2].className = 'metric-change positive'; }
-      if(metricValues[3]) metricValues[3].textContent = '72%';
-      if(metricChanges[3]) { metricChanges[3].textContent = 'Similar to last month'; metricChanges[3].className = 'metric-change neutral'; }
-      
-      if(chartBars[0]) chartBars[0].style.setProperty('--h', '45%');
-      if(chartBars[1]) chartBars[1].style.setProperty('--h', '58%');
-      if(chartBars[2]) chartBars[2].style.setProperty('--h', '50%');
-      if(chartBars[3]) chartBars[3].style.setProperty('--h', '62%');
-      if(chartBars[4]) chartBars[4].style.setProperty('--h', '85%'); 
-      if(chartBars[5]) chartBars[5].style.setProperty('--h', '95%'); 
-    } 
-    else if (filterType === 'Last Month') {
-      if(subtitle) subtitle.textContent = 'June 2024 performance overview';
-      if(metricValues[0]) metricValues[0].textContent = '₹63,392';
-      if(metricChanges[0]) { metricChanges[0].textContent = '↑ 8%'; metricChanges[0].className = 'metric-change positive'; }
-      if(metricValues[1]) metricValues[1].textContent = '5';
-      if(metricChanges[1]) { metricChanges[1].textContent = '↓ 1 vs previous'; metricChanges[1].className = 'metric-change negative'; }
-      if(metricValues[2]) metricValues[2].textContent = '63%';
-      if(metricChanges[2]) { metricChanges[2].textContent = '↑ 2%'; metricChanges[2].className = 'metric-change positive'; }
-      if(metricValues[3]) metricValues[3].textContent = '70%';
-      if(metricChanges[3]) { metricChanges[3].textContent = 'Similar to previous'; metricChanges[3].className = 'metric-change neutral'; }
 
-      if(chartBars[0]) chartBars[0].style.setProperty('--h', '35%');
-      if(chartBars[1]) chartBars[1].style.setProperty('--h', '45%');
-      if(chartBars[2]) chartBars[2].style.setProperty('--h', '58%');
-      if(chartBars[3]) chartBars[3].style.setProperty('--h', '50%');
-      if(chartBars[4]) chartBars[4].style.setProperty('--h', '62%');
-      if(chartBars[5]) chartBars[5].style.setProperty('--h', '85%');
+    if (filterType === 'This Month') {
+      if (subtitle) subtitle.textContent = 'July 2024 performance overview';
+      if (metricValues[0]) metricValues[0].textContent = '₹71,000';
+      if (metricChanges[0]) { metricChanges[0].textContent = '↑ 12%'; metricChanges[0].className = 'metric-change positive'; }
+      if (metricValues[1]) metricValues[1].textContent = '8';
+      if (metricChanges[1]) { metricChanges[1].textContent = '↑ 3 vs last month'; metricChanges[1].className = 'metric-change positive'; }
+      if (metricValues[2]) metricValues[2].textContent = '68%';
+      if (metricChanges[2]) { metricChanges[2].textContent = '↑ 5%'; metricChanges[2].className = 'metric-change positive'; }
+      if (metricValues[3]) metricValues[3].textContent = '72%';
+      if (metricChanges[3]) { metricChanges[3].textContent = 'Similar to last month'; metricChanges[3].className = 'metric-change neutral'; }
+
+      if (chartBars[0]) chartBars[0].style.setProperty('--h', '45%');
+      if (chartBars[1]) chartBars[1].style.setProperty('--h', '58%');
+      if (chartBars[2]) chartBars[2].style.setProperty('--h', '50%');
+      if (chartBars[3]) chartBars[3].style.setProperty('--h', '62%');
+      if (chartBars[4]) chartBars[4].style.setProperty('--h', '85%');
+      if (chartBars[5]) chartBars[5].style.setProperty('--h', '95%');
+    }
+    else if (filterType === 'Last Month') {
+      if (subtitle) subtitle.textContent = 'June 2024 performance overview';
+      if (metricValues[0]) metricValues[0].textContent = '₹63,392';
+      if (metricChanges[0]) { metricChanges[0].textContent = '↑ 8%'; metricChanges[0].className = 'metric-change positive'; }
+      if (metricValues[1]) metricValues[1].textContent = '5';
+      if (metricChanges[1]) { metricChanges[1].textContent = '↓ 1 vs previous'; metricChanges[1].className = 'metric-change negative'; }
+      if (metricValues[2]) metricValues[2].textContent = '63%';
+      if (metricChanges[2]) { metricChanges[2].textContent = '↑ 2%'; metricChanges[2].className = 'metric-change positive'; }
+      if (metricValues[3]) metricValues[3].textContent = '70%';
+      if (metricChanges[3]) { metricChanges[3].textContent = 'Similar to previous'; metricChanges[3].className = 'metric-change neutral'; }
+
+      if (chartBars[0]) chartBars[0].style.setProperty('--h', '35%');
+      if (chartBars[1]) chartBars[1].style.setProperty('--h', '45%');
+      if (chartBars[2]) chartBars[2].style.setProperty('--h', '58%');
+      if (chartBars[3]) chartBars[3].style.setProperty('--h', '50%');
+      if (chartBars[4]) chartBars[4].style.setProperty('--h', '62%');
+      if (chartBars[5]) chartBars[5].style.setProperty('--h', '85%');
     }
     else if (filterType === 'Quarter') {
-      if(subtitle) subtitle.textContent = 'Q3 2024 performance overview';
-      if(metricValues[0]) metricValues[0].textContent = '₹205,500';
-      if(metricChanges[0]) { metricChanges[0].textContent = '↑ 18%'; metricChanges[0].className = 'metric-change positive'; }
-      if(metricValues[1]) metricValues[1].textContent = '22';
-      if(metricChanges[1]) { metricChanges[1].textContent = '↑ 5 vs last quarter'; metricChanges[1].className = 'metric-change positive'; }
-      if(metricValues[2]) metricValues[2].textContent = '65%';
-      if(metricChanges[2]) { metricChanges[2].textContent = '↑ 4%'; metricChanges[2].className = 'metric-change positive'; }
-      if(metricValues[3]) metricValues[3].textContent = '71%';
-      if(metricChanges[3]) { metricChanges[3].textContent = 'Similar to last quarter'; metricChanges[3].className = 'metric-change neutral'; }
+      if (subtitle) subtitle.textContent = 'Q3 2024 performance overview';
+      if (metricValues[0]) metricValues[0].textContent = '₹205,500';
+      if (metricChanges[0]) { metricChanges[0].textContent = '↑ 18%'; metricChanges[0].className = 'metric-change positive'; }
+      if (metricValues[1]) metricValues[1].textContent = '22';
+      if (metricChanges[1]) { metricChanges[1].textContent = '↑ 5 vs last quarter'; metricChanges[1].className = 'metric-change positive'; }
+      if (metricValues[2]) metricValues[2].textContent = '65%';
+      if (metricChanges[2]) { metricChanges[2].textContent = '↑ 4%'; metricChanges[2].className = 'metric-change positive'; }
+      if (metricValues[3]) metricValues[3].textContent = '71%';
+      if (metricChanges[3]) { metricChanges[3].textContent = 'Similar to last quarter'; metricChanges[3].className = 'metric-change neutral'; }
 
-      if(chartBars[0]) chartBars[0].style.setProperty('--h', '60%');
-      if(chartBars[1]) chartBars[1].style.setProperty('--h', '70%');
-      if(chartBars[2]) chartBars[2].style.setProperty('--h', '65%');
-      if(chartBars[3]) chartBars[3].style.setProperty('--h', '80%');
-      if(chartBars[4]) chartBars[4].style.setProperty('--h', '90%'); 
-      if(chartBars[5]) chartBars[5].style.setProperty('--h', '100%'); 
+      if (chartBars[0]) chartBars[0].style.setProperty('--h', '60%');
+      if (chartBars[1]) chartBars[1].style.setProperty('--h', '70%');
+      if (chartBars[2]) chartBars[2].style.setProperty('--h', '65%');
+      if (chartBars[3]) chartBars[3].style.setProperty('--h', '80%');
+      if (chartBars[4]) chartBars[4].style.setProperty('--h', '90%');
+      if (chartBars[5]) chartBars[5].style.setProperty('--h', '100%');
     }
 
     animateBars();
@@ -492,54 +492,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }, i * 60);
   });
 
-window.uploadGenericDocument = async (input) => {
-  if (input.files && input.files.length > 0) {
-    const file = input.files[0];
-    if (typeof showToast === 'function') showToast(`Uploading ${file.name}...`, 'info');
-    try {
-      if (typeof window.uploadGlobalDocument !== 'function') {
-        throw new Error("uploadGlobalDocument not found in window. Ensure firebase-entry.js is loaded.");
+  window.uploadGenericDocument = async (input) => {
+    if (input.files && input.files.length > 0) {
+      const file = input.files[0];
+      if (typeof showToast === 'function') showToast(`Uploading ${file.name}...`, 'info');
+      try {
+        if (typeof window.uploadGlobalDocument !== 'function') {
+          throw new Error("uploadGlobalDocument not found in window. Ensure firebase-entry.js is loaded.");
+        }
+        await window.uploadGlobalDocument(file, file.name, "Generic Document");
+        if (typeof showToast === 'function') showToast('Document uploaded successfully!', 'success');
+        input.value = ''; // reset
+        if (typeof window.renderGlobalDocuments === 'function') {
+          window.renderGlobalDocuments();
+        }
+      } catch (e) {
+        console.error("Upload error:", e);
+        if (typeof showToast === 'function') showToast(`Upload failed: ${e.message}`, 'error');
       }
-      await window.uploadGlobalDocument(file, file.name, "Generic Document");
-      if (typeof showToast === 'function') showToast('Document uploaded successfully!', 'success');
-      input.value = ''; // reset
-      if (typeof window.renderGlobalDocuments === 'function') {
-        window.renderGlobalDocuments();
-      }
-    } catch (e) {
-      console.error("Upload error:", e);
-      if (typeof showToast === 'function') showToast(`Upload failed: ${e.message}`, 'error');
     }
-  }
-};
+  };
 
-window.renderGlobalDocuments = async () => {
-  const container = document.getElementById("document-list-container");
-  if (!container) return;
-  
-  container.innerHTML = `<div style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto;"></div><p>Loading documents...</p></div>`;
-  try {
-    if (typeof window.loadGlobalDocuments !== 'function') {
-      throw new Error("loadGlobalDocuments not found.");
-    }
-    const docs = await window.loadGlobalDocuments();
-    if (docs.length === 0) {
-      container.innerHTML = `<div class="empty-state" style="text-align:center;padding:3rem 1rem;">
+  window.renderGlobalDocuments = async () => {
+    const container = document.getElementById("document-list-container");
+    if (!container) return;
+
+    container.innerHTML = `<div style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto;"></div><p>Loading documents...</p></div>`;
+    try {
+      if (typeof window.loadGlobalDocuments !== 'function') {
+        throw new Error("loadGlobalDocuments not found.");
+      }
+      const docs = await window.loadGlobalDocuments();
+      if (docs.length === 0) {
+        container.innerHTML = `<div class="empty-state" style="text-align:center;padding:3rem 1rem;">
           <div class="empty-icon" style="font-size:2rem;opacity:0.5;margin-bottom:1rem;">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           </div>
           <p style="color:var(--text-secondary);">No documents found</p>
         </div>`;
-      return;
-    }
-    
-    let html = `<div style="display:grid;gap:1rem;">`;
-    docs.forEach(doc => {
-      const date = new Date(doc.uploadedAt).toLocaleString();
-      let iconSvg = doc.fileType.includes("image")
-        ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`
-        : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
-      html += `
+        return;
+      }
+
+      let html = `<div style="display:grid;gap:1rem;">`;
+      docs.forEach(doc => {
+        const date = new Date(doc.uploadedAt).toLocaleString();
+        let iconSvg = doc.fileType.includes("image")
+          ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`
+          : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+        html += `
         <div class="data-card" style="display:flex;align-items:center;padding:1rem;gap:1rem;">
           <div style="background:var(--bg-elevated);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);">${iconSvg}</div>
           <div style="flex:1;min-width:0;">
@@ -551,13 +551,13 @@ window.renderGlobalDocuments = async () => {
           </a>
         </div>
       `;
-    });
-    html += `</div>`;
-    container.innerHTML = html;
-  } catch (e) {
-    console.error(e);
-    container.innerHTML = `<p style="color:var(--danger);text-align:center;">Failed to load documents.</p>`;
-  }
-};
+      });
+      html += `</div>`;
+      container.innerHTML = html;
+    } catch (e) {
+      console.error(e);
+      container.innerHTML = `<p style="color:var(--danger);text-align:center;">Failed to load documents.</p>`;
+    }
+  };
 
 });

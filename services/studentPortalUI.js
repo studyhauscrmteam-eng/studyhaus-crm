@@ -34,7 +34,7 @@ export const initStudentPortalUI = () => {
 
   unsubscribePortal = listenToStudentPortalData(async (studentData) => {
     currentStudent = studentData;
-    
+
     // Listeners
     if (!unsubscribeAttendance) {
       unsubscribeAttendance = listenToMyAttendance(studentData.id, (records) => {
@@ -73,28 +73,28 @@ export const initStudentPortalUI = () => {
 
   window.handleCheckIn = async () => {
     const isRotational = (currentStudent.planName || "").toLowerCase().includes("rotational");
-    
+
     // If student has a fixed seat and is not on a rotational plan, check them in directly!
     if (currentStudent.seatNumber && !isRotational) {
       const ev = window.event;
       const btn = ev ? (ev.target.closest ? ev.target.closest('.btn') : null) : null;
       const originalText = btn ? btn.innerHTML : "Check In";
       if (btn) { btn.innerHTML = "Processing..."; btn.disabled = true; }
-      
+
       const res = await checkIn(currentStudent, currentStudent.seatNumber);
       if (!res.success) {
         window.showToast((window.t ? window.t('Check-In Failed: ') : "Check-In Failed: ") + res.error, "error");
       } else {
         window.showToast(window.t ? window.t('Checked in successfully!') : "Checked in successfully!", "success");
       }
-      
+
       if (btn) { btn.innerHTML = originalText; btn.disabled = false; }
       return;
     }
 
     const modal = document.getElementById("checkin-seat-modal");
     if (!modal) return;
-    
+
     // Clear previous selection
     const numInput = document.getElementById("selectedSeatNumber");
     const idInput = document.getElementById("selectedSeatId");
@@ -132,7 +132,7 @@ export const initStudentPortalUI = () => {
       const modal = document.getElementById("checkin-seat-modal");
       if (modal) modal.close();
     }
-    
+
     btn.innerHTML = originalText;
     btn.disabled = false;
   };
@@ -140,21 +140,21 @@ export const initStudentPortalUI = () => {
   // Handle Check-out
   window.handleCheckOut = async (attendanceId) => {
     const btn = document.getElementById("btn-checkout-top");
-    if(btn) { btn.innerHTML = "Checking out..."; btn.disabled = true; }
+    if (btn) { btn.innerHTML = "Checking out..."; btn.disabled = true; }
 
     try {
       const res = await checkOut(attendanceId);
       if (!res.success) {
         window.showToast((window.t ? window.t('Check-Out Failed: ') : "Check-Out Failed: ") + res.error, "error");
-        if(btn) { btn.innerHTML = "Check-Out Now"; btn.disabled = false; }
+        if (btn) { btn.innerHTML = "Check-Out Now"; btn.disabled = false; }
       } else {
         window.showToast(window.t ? window.t('Checked out successfully!') : "Checked out successfully!", "success");
         // Reload is handled by listener mostly, but just in case
         setTimeout(() => window.location.reload(), 1000);
       }
-    } catch(e) {
+    } catch (e) {
       window.showToast((window.t ? window.t('Check-Out Failed: ') : "Check-Out Failed: ") + e.message, "error");
-      if(btn) { btn.innerHTML = "Check-Out Now"; btn.disabled = false; }
+      if (btn) { btn.innerHTML = "Check-Out Now"; btn.disabled = false; }
     }
   };
 
@@ -175,12 +175,12 @@ export const initStudentPortalUI = () => {
   window.showNewComplaintModal = () => {
     document.getElementById("new-complaint-modal").showModal();
   };
-  
+
   window.submitNewComplaint = async () => {
     const title = document.getElementById("complaint-title").value;
     const desc = document.getElementById("complaint-desc").value;
     if (!title || !desc) return window.showToast(window.t ? window.t('Please fill all fields.') : "Please fill all fields.", "warning");
-    
+
     const btn = document.getElementById("btn-submit-complaint");
     btn.innerHTML = "Submitting...";
     btn.disabled = true;
@@ -193,7 +193,7 @@ export const initStudentPortalUI = () => {
       } else {
         window.showToast((window.t ? window.t('Failed: ') : "Failed: ") + res.error, "error");
       }
-    } catch(e) {
+    } catch (e) {
       window.showToast((window.t ? window.t('Failed: ') : "Failed: ") + e.message, "error");
     } finally {
       btn.innerHTML = "Submit Complaint";
@@ -236,7 +236,7 @@ export const initStudentPortalUI = () => {
     const originalText = btn.innerHTML;
     btn.innerHTML = "Generating...";
     btn.disabled = true;
-    
+
     const calculated = calculateStudyHours(currentAttendance);
     const res = await generateAttendancePDF(currentStudent.name, currentAttendance, calculated.totalHours);
     if (!res.success) window.showToast(window.t ? window.t('Failed to generate PDF: ') || "Failed to generate PDF: " : "Failed to generate PDF: " + res.error, "error");
@@ -342,7 +342,7 @@ const renderPortal = () => {
   if (currentAttendance.length === 0) {
     historyHtml = `<tr><td colspan="5" style="text-align:center; color: var(--text-muted);">No attendance records.</td></tr>`;
   } else {
-    currentAttendance.slice(0, 5).forEach(r => { 
+    currentAttendance.slice(0, 5).forEach(r => {
       const cIn = new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const cOut = r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Active";
       const statusBadge = r.status === "Active" ? `<span class="badge badge-pending">Active</span>` : `<span class="badge badge-paid">Completed</span>`;
@@ -370,9 +370,9 @@ const renderPortal = () => {
       let badgeClass = "badge-pending";
       if (c.status === "Resolved" || c.status === "Closed") badgeClass = "badge-paid";
       if (c.status === "In Progress") badgeClass = "badge-info";
-      
+
       const resNote = c.resolutionNote ? `<br><small style="color:var(--text-muted)"><i>Admin: ${c.resolutionNote}</i></small>` : "";
-      
+
       complaintsHtml += `
         <tr>
           <td>${new Date(c.date).toLocaleDateString()}</td>
@@ -496,7 +496,7 @@ const renderPortal = () => {
         </div>
       </dialog>
     `;
-    
+
     // Hide sidebars since they shouldn't access other pages yet
     const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
     navItems.forEach(item => {
@@ -515,7 +515,7 @@ const renderPortal = () => {
           let html = "<option value=''>Choose plan</option>";
           plans.forEach(p => { html += `<option value="${p.id}">${(p.planName || '').toLowerCase()} - ₹${p.price}</option>`; });
           planSelect.innerHTML = html;
-          
+
           const savedPlan = sessionStorage.getItem('pendingPlan');
           if (savedPlan) {
             // Find a plan where planName includes savedPlan or matches it roughly
@@ -532,13 +532,13 @@ const renderPortal = () => {
     import("./seatMapUI.js").then(({ initSeatMapUI }) => {
       initSeatMapUI("signup", "seat-selection-section");
     });
-    
+
     import("./documentUploadService.js").then(({ initDocumentUploads, getSelectedDocumentFiles, uploadAdmissionDocuments }) => {
       window.getSelectedDocumentFiles = getSelectedDocumentFiles;
       window.uploadAdmissionDocuments = uploadAdmissionDocuments;
       initDocumentUploads("doc-upload-section");
     });
-    
+
     // Add logic for modal flow
     window.showPaymentModal = async () => {
       const selectedSeatId = document.getElementById("selectedSeatId")?.value;
@@ -564,17 +564,17 @@ const renderPortal = () => {
         btnSubmit.disabled = false;
         return window.showToast(window.t ? window.t('Failed to reserve seat: ') || "Failed to reserve seat: " : "Failed to reserve seat: " + e.message, "error");
       }
-      
+
       btnSubmit.innerHTML = originalText;
       btnSubmit.disabled = false;
 
       const modal = document.getElementById("payment-modal");
       document.getElementById("payment-step-1").style.display = "block";
       document.getElementById("payment-step-2").style.display = "none";
-      
+
       const amount = document.getElementById("summary-amount").innerText;
       document.getElementById("payment-modal-amount").innerText = amount;
-      
+
       modal.showModal();
     };
 
@@ -600,12 +600,12 @@ const renderPortal = () => {
 
     window.submitSelfAdmission = async (paymentMethod) => {
       let txnId = "";
-      
+
       try {
         if (paymentMethod === "Paid") {
           txnId = document.getElementById("modal-txnid").value;
           if (!txnId) return window.showToast(window.t ? window.t('Please enter Transaction ID.') || "Please enter Transaction ID." : "Please enter Transaction ID.", "warning");
-          
+
           const btn = document.getElementById("btn-modal-paid");
           btn.innerHTML = "Uploading & Submitting...";
           btn.disabled = true;
@@ -620,7 +620,7 @@ const renderPortal = () => {
         if (window.getSelectedDocumentFiles && window.uploadAdmissionDocuments) {
           const files = window.getSelectedDocumentFiles();
           if (files.aadhaarFront || files.aadhaarBack || files.selfie) {
-             docUrls = await window.uploadAdmissionDocuments(files, s.id);
+            docUrls = await window.uploadAdmissionDocuments(files, s.id);
           }
         }
 
@@ -628,7 +628,7 @@ const renderPortal = () => {
         const planEl = document.getElementById("adm-plan");
         const planId = planEl.value;
         const plan = (window.availablePlansList || []).find(p => p.id === planId);
-        
+
         const selectedSeatNumber = document.getElementById("selectedSeatNumber")?.value || "";
         const selectedSeatId = document.getElementById("selectedSeatId")?.value || "";
 
@@ -653,7 +653,7 @@ const renderPortal = () => {
           loginCredentials: s.loginCredentials || "",
           termsAccepted: true
         };
-        
+
         if (paymentMethod === "Pay Later") {
           const d = new Date();
           d.setDate(d.getDate() + 3);
@@ -670,7 +670,7 @@ const renderPortal = () => {
               try {
                 const { changeSeatStatus } = await import("./seatService.js");
                 await changeSeatStatus(selectedSeatId, "Occupied");
-              } catch(e) {
+              } catch (e) {
                 console.error("Failed to mark seat as occupied", e);
               }
             }
@@ -687,7 +687,7 @@ const renderPortal = () => {
             sessionStorage.removeItem('pendingMessage');
             window.location.reload(); // reload to show pending or active state
           } else {
-              window.showToast((window.t ? window.t('Error: ') : "Error: ") + res.error, "error");
+            window.showToast((window.t ? window.t('Error: ') : "Error: ") + res.error, "error");
             document.getElementById("payment-modal").close();
             if (paymentMethod === "Paid") {
               const btn = document.getElementById("btn-modal-paid");
@@ -704,14 +704,14 @@ const renderPortal = () => {
         window.showToast((window.t ? window.t('An unexpected error occurred: ') : "An unexpected error occurred: ") + err.message, "error");
         if (paymentMethod === "Paid") {
           const btn = document.getElementById("btn-modal-paid");
-          if(btn) { btn.innerHTML = "Mark as Paid & Submit"; btn.disabled = false; }
+          if (btn) { btn.innerHTML = "Mark as Paid & Submit"; btn.disabled = false; }
         } else {
           const btn = document.querySelector("#payment-step-1 button.btn-ghost");
-          if(btn) { btn.innerHTML = "Pay Later"; btn.disabled = false; }
+          if (btn) { btn.innerHTML = "Pay Later"; btn.disabled = false; }
         }
       }
     };
-    
+
   } else if (s._isPendingAdmission) {
     // Pending admission state
     portalSection.innerHTML = `
@@ -783,36 +783,36 @@ const renderPortal = () => {
     };
 
     window.submitPendingPayment = async () => {
-        const txnId = document.getElementById("pending-modal-txnid").value;
-        if (!txnId) return window.showToast(window.t ? window.t('Please enter Transaction ID.') || "Please enter Transaction ID." : "Please enter Transaction ID.", "warning");
-        
-        const btn = document.getElementById("btn-pending-modal-paid");
-        btn.innerHTML = "Uploading & Submitting...";
-        btn.disabled = true;
+      const txnId = document.getElementById("pending-modal-txnid").value;
+      if (!txnId) return window.showToast(window.t ? window.t('Please enter Transaction ID.') || "Please enter Transaction ID." : "Please enter Transaction ID.", "warning");
 
-        let paymentScreenshotUrl = "";
-        if (window.getSelectedDocumentFiles && window.uploadAdmissionDocuments) {
-          const files = window.getSelectedDocumentFiles();
-          if (files.selfie) {
-             const urlMap = await window.uploadAdmissionDocuments({ selfie: files.selfie }, s.id);
-             paymentScreenshotUrl = urlMap.selfieUrl || "";
-          }
+      const btn = document.getElementById("btn-pending-modal-paid");
+      btn.innerHTML = "Uploading & Submitting...";
+      btn.disabled = true;
+
+      let paymentScreenshotUrl = "";
+      if (window.getSelectedDocumentFiles && window.uploadAdmissionDocuments) {
+        const files = window.getSelectedDocumentFiles();
+        if (files.selfie) {
+          const urlMap = await window.uploadAdmissionDocuments({ selfie: files.selfie }, s.id);
+          paymentScreenshotUrl = urlMap.selfieUrl || "";
         }
+      }
 
-        import("./admissionService.js").then(async ({ updateAdmissionPayment }) => {
-           const res = await updateAdmissionPayment(s.id, txnId, paymentScreenshotUrl);
-           if (res.success) {
-               window.showToast(window.t ? window.t('Payment details updated successfully!') || "Payment details updated successfully!" : "Payment details updated successfully!", "success");
-               document.getElementById("pending-payment-modal").close();
-               window.location.reload();
-           } else {
-               window.showToast((window.t ? window.t('Error: ') : "Error: ") + res.error, "error");
-               btn.innerHTML = "Mark as Paid & Submit";
-               btn.disabled = false;
-           }
-        });
+      import("./admissionService.js").then(async ({ updateAdmissionPayment }) => {
+        const res = await updateAdmissionPayment(s.id, txnId, paymentScreenshotUrl);
+        if (res.success) {
+          window.showToast(window.t ? window.t('Payment details updated successfully!') || "Payment details updated successfully!" : "Payment details updated successfully!", "success");
+          document.getElementById("pending-payment-modal").close();
+          window.location.reload();
+        } else {
+          window.showToast((window.t ? window.t('Error: ') : "Error: ") + res.error, "error");
+          btn.innerHTML = "Mark as Paid & Submit";
+          btn.disabled = false;
+        }
+      });
     };
-    
+
     // Hide sidebars since they shouldn't access other pages yet
     const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
     navItems.forEach(item => {
@@ -823,13 +823,13 @@ const renderPortal = () => {
 
   } else {
     // Normal active student dashboard
-    
+
     // Clean up Settings page for students (Hide admin-only controls)
     const settingsPage = document.getElementById("page-settings");
     if (settingsPage) {
       const saveBtn = settingsPage.querySelector(".btn-primary");
       if (saveBtn) saveBtn.style.display = "none";
-      
+
       const adminCards = settingsPage.querySelectorAll(".settings-card");
       adminCards.forEach(card => {
         const title = card.querySelector(".settings-section-title");
@@ -837,10 +837,10 @@ const renderPortal = () => {
           card.style.display = "none";
         }
       });
-      
+
       const toggles = settingsPage.querySelector(".settings-toggle-list");
       if (toggles) toggles.style.display = "none";
-      
+
       // Auto-save language on change for students
       const langSelect = document.getElementById("setting-language");
       if (langSelect) {
@@ -867,7 +867,7 @@ const renderPortal = () => {
     portalSection.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 data-i18n="studentPortal.welcome" data-i18n-args='{"name":"${s.name}"}'>${window.t ? window.t('studentPortal.welcome', {name: s.name}) : 'Welcome back, ' + s.name}</h1>
+          <h1 data-i18n="studentPortal.welcome" data-i18n-args='{"name":"${s.name}"}'>${window.t ? window.t('studentPortal.welcome', { name: s.name }) : 'Welcome back, ' + s.name}</h1>
           <p class="page-subtitle">Here is your personal study portal.</p>
         </div>
         <div style="display:flex; gap:1rem;">

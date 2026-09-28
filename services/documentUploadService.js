@@ -61,7 +61,7 @@ const compressImage = (file) => {
  * @param {function} onProgress - called with 0-100
  * @returns {Promise<Object>} field names added { aadhaarFrontUrl, aadhaarBackUrl, selfieUrl }
  */
-export const uploadAdmissionDocuments = async (files, studentId, onProgress = () => {}) => {
+export const uploadAdmissionDocuments = async (files, studentId, onProgress = () => { }) => {
   const entries = Object.entries(files).filter(([, f]) => f !== null);
   if (entries.length === 0) return {};
 
@@ -88,11 +88,11 @@ export const uploadAdmissionDocuments = async (files, studentId, onProgress = ()
  * Save a generic document into Firestore.
  * Stored in: globalDocuments
  */
-export const uploadGlobalDocument = async (file, title, description, onProgress = () => {}) => {
+export const uploadGlobalDocument = async (file, title, description, onProgress = () => { }) => {
   onProgress(10);
   const base64 = await compressImage(file);
   onProgress(50);
-  
+
   const docData = {
     title: title || file.name,
     description: description || "",
@@ -135,23 +135,23 @@ export const loadStudentDocuments = async (studentId) => {
 // ──────────────────────────────────────────────
 
 const DOC_TYPES = [
-  { 
-    key: "aadhaarFront", 
-    label: "Aadhaar Front", 
-    accept: "image/*,.pdf", 
-    iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>` 
+  {
+    key: "aadhaarFront",
+    label: "Aadhaar Front",
+    accept: "image/*,.pdf",
+    iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`
   },
-  { 
-    key: "aadhaarBack",  
-    label: "Aadhaar Back",  
-    accept: "image/*,.pdf", 
-    iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="20" height="14" x="2" y="5" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="14" x2="18" y1="11" y2="11"/><line x1="14" x2="18" y1="14" y2="14"/></svg>` 
+  {
+    key: "aadhaarBack",
+    label: "Aadhaar Back",
+    accept: "image/*,.pdf",
+    iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="20" height="14" x="2" y="5" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="14" x2="18" y1="11" y2="11"/><line x1="14" x2="18" y1="14" y2="14"/></svg>`
   },
-  { 
-    key: "selfie",       
-    label: "Selfie Photo",  
-    accept: "image/*",      
-    iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>` 
+  {
+    key: "selfie",
+    label: "Selfie Photo",
+    accept: "image/*",
+    iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`
   },
 ];
 
@@ -173,8 +173,8 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
     </label>
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem;">
       ${DOC_TYPES.map(d => {
-        if (d.key === "selfie") {
-          return `
+    if (d.key === "selfie") {
+      return `
             <div id="doc-card-${d.key}" style="
               border:2px dashed var(--border-bright);border-radius:12px;padding:1rem .75rem;
               text-align:center;cursor:pointer;transition:border-color .2s,background .2s;
@@ -199,8 +199,8 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
                 margin-top:.3rem;display:none;word-break:break-all;">Selfie captured<br><span style="color:var(--text-muted);font-size:10px;text-decoration:underline;">Click to retake</span></div>
             </div>
           `;
-        } else {
-          return `
+    } else {
+      return `
             <div id="doc-card-${d.key}" style="
               border:2px dashed var(--border-bright);border-radius:12px;padding:1rem .75rem;
               text-align:center;cursor:pointer;transition:border-color .2s,background .2s;
@@ -226,8 +226,8 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
                 margin-top:.3rem;display:none;word-break:break-all;"></div>
             </div>
           `;
-        }
-      }).join("")}
+    }
+  }).join("")}
     </div>
 
     <!-- Upload progress bar -->
@@ -271,11 +271,11 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
     input.addEventListener("change", () => {
       const file = input.files[0];
       if (!file) return;
-      const img       = document.getElementById(`doc-img-${key}`);
-      const preview   = document.getElementById(`doc-preview-${key}`);
+      const img = document.getElementById(`doc-img-${key}`);
+      const preview = document.getElementById(`doc-preview-${key}`);
       const placeholder = document.getElementById(`doc-placeholder-${key}`);
-      const nameEl    = document.getElementById(`doc-name-${key}`);
-      const card      = document.getElementById(`doc-card-${key}`);
+      const nameEl = document.getElementById(`doc-name-${key}`);
+      const card = document.getElementById(`doc-card-${key}`);
 
       if (file.type.startsWith("image/")) {
         img.src = URL.createObjectURL(file);
@@ -325,19 +325,19 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
   window.__captureSelfie = () => {
     const video = document.getElementById("selfie-video");
     if (!selfieStream) return;
-    
+
     // Draw to canvas
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth || 480;
     canvas.height = video.videoHeight || 640;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
+
     // Convert to file
     canvas.toBlob((blob) => {
       const file = new File([blob], "selfie.jpg", { type: "image/jpeg" });
       capturedSelfieFile = file;
-      
+
       // Update UI
       const key = "selfie";
       const img = document.getElementById(`doc-img-${key}`);
@@ -345,14 +345,14 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
       const placeholder = document.getElementById(`doc-placeholder-${key}`);
       const nameEl = document.getElementById(`doc-name-${key}`);
       const card = document.getElementById(`doc-card-${key}`);
-      
+
       img.src = URL.createObjectURL(file);
       preview.style.display = "block";
       placeholder.style.display = "none";
       nameEl.style.display = "block"; // Contains "Selfie captured" + "Retake Selfie"
       card.style.borderColor = "var(--accent-emerald)";
       card.style.background = "rgba(16,185,129,.06)";
-      
+
       window.__closeSelfieCamera();
     }, "image/jpeg", 0.9);
   };
@@ -384,8 +384,8 @@ export const getSelectedDocumentFiles = () => {
   };
   return {
     aadhaarFront: getFile("doc-input-aadhaarFront"),
-    aadhaarBack:  getFile("doc-input-aadhaarBack"),
-    selfie:       capturedSelfieFile,
+    aadhaarBack: getFile("doc-input-aadhaarBack"),
+    selfie: capturedSelfieFile,
   };
 };
 
@@ -394,11 +394,11 @@ export const getSelectedDocumentFiles = () => {
  * @param {number} pct - 0 to 100
  */
 export const setUploadProgress = (pct) => {
-  const wrap  = document.getElementById("doc-upload-progress");
-  const bar   = document.getElementById("doc-progress-bar");
+  const wrap = document.getElementById("doc-upload-progress");
+  const bar = document.getElementById("doc-progress-bar");
   const label = document.getElementById("doc-progress-pct");
   if (!wrap) return;
   wrap.style.display = (pct > 0 && pct <= 100) ? "block" : "none";
-  if (bar)   bar.style.width = pct + "%";
+  if (bar) bar.style.width = pct + "%";
   if (label) label.textContent = pct;
 };

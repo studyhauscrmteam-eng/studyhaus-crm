@@ -1441,7 +1441,12 @@ body.light-mode .theme-toggle {
   color: var(--text-muted);
 }
 
-input:focus, select:focus, textarea:focus, button:focus, *:focus, *:focus-visible {
+input:focus,
+select:focus,
+textarea:focus,
+button:focus,
+*:focus,
+*:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }
@@ -2281,14 +2286,23 @@ dialog::backdrop {
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(2px);
 }
+
 /* Autofill Dark Mode Fix */
-input:-webkit-autofill, textarea:-webkit-autofill, select:-webkit-autofill,
-input:-webkit-autofill:hover, textarea:-webkit-autofill:hover, select:-webkit-autofill:hover, 
-input:-webkit-autofill:focus, textarea:-webkit-autofill:focus, select:-webkit-autofill:focus, 
-input:-webkit-autofill:active, textarea:-webkit-autofill:active, select:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px var(--bg-base) inset !important;
-    -webkit-text-fill-color: var(--text-primary) !important;
-    transition: background-color 5000s ease-in-out 0s;
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill,
+input:-webkit-autofill:hover,
+textarea:-webkit-autofill:hover,
+select:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill:active,
+select:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px var(--bg-base) inset !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 /* ==================== WEBSITE MANAGEMENT MODULE ENHANCEMENTS ==================== */
@@ -2304,6 +2318,7 @@ input:-webkit-autofill:active, textarea:-webkit-autofill:active, select:-webkit-
   overflow-x: auto;
   scrollbar-width: none;
 }
+
 .website-tab-bar::-webkit-scrollbar {
   display: none;
 }
@@ -2643,6 +2658,7 @@ body.light-mode .amenity-card-item:hover {
 .tab-label-short {
   display: none;
 }
+
 .tab-label-full {
   display: inline;
 }
@@ -2682,7 +2698,7 @@ body.light-mode .amenity-card-item:hover {
     gap: 0.75rem;
   }
 
-  .photo-preview-box > div:first-child {
+  .photo-preview-box>div:first-child {
     width: 100% !important;
     height: 150px !important;
   }
@@ -2700,9 +2716,11 @@ body.light-mode .amenity-card-item:hover {
   .tab-label-full {
     display: none !important;
   }
+
   .tab-label-short {
     display: inline !important;
   }
+
   .website-tab-bar {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
@@ -2759,5 +2777,3 @@ body.light-mode .amenity-card-item:hover {
     justify-content: center;
   }
 }
-
-
