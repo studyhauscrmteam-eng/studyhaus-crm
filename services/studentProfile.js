@@ -2,9 +2,10 @@ import { listenToAllStudents, softDeleteStudent, updateStudentProfile } from "./
 import { searchStudents, filterStudents, sortStudents, paginateStudents } from "./studentDataProcessing.js";
 import { fetchPlansForDropdown } from "./admissionService.js";
 import { convertToOldStudent } from "./oldStudentService.js";
-import { loadStudentDocuments } from "./documentUploadService.js";
+import { loadStudentDocuments, renderStudentDocuments } from "./documentUploadService.js";
 
 let allStudents = [];
+let currentProfileStudentId = null;
 let currentQuery = "";
 let currentFilters = { status: "All", plan: "All" };
 let currentSort = { by: "name", order: "asc" };
@@ -232,6 +233,7 @@ const updatePaginationUI = (total) => {
 const renderProfileModal = (s, role) => {
   const modal = document.getElementById("student-profile-modal");
   if (!modal) return;
+  currentProfileStudentId = s.id;
 
   const isOwner = role === "Owner/Admin";
   const isManager = role === "Manager";
@@ -305,6 +307,7 @@ const renderProfileModal = (s, role) => {
       <div class="tabs" style="display:flex; gap:1rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem;">
         <div class="tab active sp-tab" style="padding:0.5rem 1rem; border-bottom: 2px solid var(--primary); cursor:pointer;" onclick="window.switchStudentProfileTab('details', this)">Details</div>
         <div class="tab sp-tab" style="padding:0.5rem 1rem; cursor:pointer;" onclick="window.switchStudentProfileTab('history', this); window.loadRenewalHistory('${s.id}')">Renewal History</div>
+        <div class="tab sp-tab" style="padding:0.5rem 1rem; cursor:pointer;" onclick="window.switchStudentProfileTab('documents', this)">Documents</div>
       </div>
 
       <div id="sp-tab-details">
@@ -405,6 +408,16 @@ const renderProfileModal = (s, role) => {
       <div id="sp-tab-history" style="display:none;">
         <div id="sp-renewal-history-container"></div>
       </div>
+
+      <div id="sp-tab-documents" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; gap:1rem; flex-wrap:wrap;">
+          <div>
+            <strong>Student Documents</strong>
+            <div style="font-size:12px; color:var(--text-muted);">Aadhaar, selfie and profile photo — upload, preview and download.</div>
+          </div>
+        </div>
+        <div id="student-documents-list"></div>
+      </div>
     </div>
   `;
   modal.showModal();
@@ -479,9 +492,20 @@ window.submitStudentEdit = async (id) => {
 };
 
 window.switchStudentProfileTab = (tab, el) => {
-  document.getElementById("sp-tab-details").style.display = tab === "details" ? "block" : "none";
-  document.getElementById("sp-tab-history").style.display = tab === "history" ? "block" : "none";
-  
+  const details = document.getElementById("sp-tab-details");
+  const history = document.getElementById("sp-tab-history");
+  const documents = document.getElementById("sp-tab-documents");
+  if (details) details.style.display = tab === "details" ? "block" : "none";
+  if (history) history.style.display = tab === "history" ? "block" : "none";
+  if (documents) documents.style.display = tab === "documents" ? "block" : "none";
+
+  // Lazily load the documents every time the tab is opened so it's always fresh
+  if (tab === "documents" && currentProfileStudentId) {
+    renderStudentDocuments(currentProfileStudentId, "student-documents-list").catch(err => {
+      console.error("Failed to render student documents", err);
+    });
+  }
+
   // Update active tab styling
   const tabs = el.parentElement.querySelectorAll(".tab");
   tabs.forEach(t => {

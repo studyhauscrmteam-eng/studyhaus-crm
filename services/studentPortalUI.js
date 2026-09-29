@@ -6,6 +6,8 @@ import { listenToMyPayments, submitPaymentRequest } from "./paymentService.js";
 import { listenToMyComplaints, submitComplaint } from "./complaintService.js";
 import { listenToRenewalHistory } from "./renewalService.js";
 import { getSettings } from "./settingsService.js";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "../firebase/firebase.js";
 
 let currentStudent = null;
 let currentAttendance = [];
@@ -245,17 +247,49 @@ export const initStudentPortalUI = () => {
     btn.disabled = false;
   };
 
-  window.calculatePaymentAmount = () => {
+  // Cache for plan prices
+let planPriceCache = {};
+
+async function getPlanPrice(planName) {
+  if (!planName) return 1000;
+  
+  // Check cache first
+  if (planPriceCache[planName]) return planPriceCache[planName];
+  
+  try {
+    const plansRef = collection(db, "membershipPlans");
+    const q = query(plansRef, where("planName", "==", planName));
+    const snapshot = await getDocs(q);
+    
+    if (!snapshot.empty) {
+      const plan = snapshot.docs[0].data();
+      const price = Number(plan.price) || 1000;
+      planPriceCache[planName] = price;
+      return price;
+    }
+  } catch (e) {
+    console.warn("Failed to fetch plan price:", e);
+  }
+  
+  // Fallback to hardcoded prices
+  const planNameLower = (planName || '').toLowerCase();
+  let fallbackPrice = 1000;
+  if (planNameLower.includes("rotational")) fallbackPrice = 800;
+  else if (planNameLower.includes("night")) fallbackPrice = 700;
+  else if (planNameLower.includes("half") || planNameLower.includes("6 hour")) fallbackPrice = 700;
+  
+  planPriceCache[planName] = fallbackPrice;
+  return fallbackPrice;
+}
+
+window.calculatePaymentAmount = async () => {
     if (!currentStudent) return;
     const { monthsOwed, nextStartStr, nextEndStr } = computeUnpaidMonths(currentStudent.paymentDueDate);
     const months = monthsOwed > 0 ? 1 : (parseInt(document.getElementById("payment-months")?.value) || 1);
 
-    const planName = (currentStudent.planName || '').toLowerCase();
-    let basePrice = 1000;
-    if (planName.includes("rotational")) basePrice = 800;
-    else if (planName.includes("night")) basePrice = 700;
-
+    const basePrice = await getPlanPrice(currentStudent.planName);
     const total = basePrice * months;
+    
     const amountDisplay = document.getElementById("payment-amount-display");
     const amountInput = document.getElementById("payment-amount");
     if (amountDisplay) amountDisplay.innerText = `₹${total}`;
@@ -864,24 +898,111 @@ const renderPortal = () => {
       }
     });
 
+    // Profile photo update function
+    window.updateProfilePhoto = async () => {
+      const { initializePhotoUpload } = await import("./documentUploadService.js");
+      const modal = document.createElement('dialog');
+      modal.className = 'card';
+      modal.style.cssText = 'border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card); color: var(--text-primary); max-width: 500px; margin: auto;';
+      modal.innerHTML = `
+        <div style="padding: 1.5rem; border-bottom: 1px solid var(--borderBright); display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="font-size: 1.1rem; font-weight: 600; margin: 0;">Profile Photo</h2>
+          <button onclick="this.closest('dialog').close()" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+        </div>
+        <div style="padding: 1.5rem; text-align: center;">
+          <div id="photo-preview" style="width: 150px; height: 150px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); background: var(--bg-card); margin: 0 auto 1.5rem; box-shadow: 0 4px 12px rgba(5,150,105,0.2);">
+            ${avatarHtml}
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label class="btn btn-primary" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600; font-size:13px; padding:8px 16px; border-radius:8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload Photo
+              <input type="file" accept="image/*" style="display:none;" id="profile-photo-input" />
+            </label>
+          </div>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1.5rem;">Max 2MB. JPG/PNG. Square crop recommended.</p>
+          <div style="display:flex; gap:0.5rem; justify-content:center;">
+            <button class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+            <button class="btn btn-primary" id="btn-save-photo" style="display:none;">Save Photo</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.showModal();
+
+      const input = modal.querySelector('#profile-photo-input');
+      const preview = modal.querySelector('#photo-preview');
+      const saveBtn = modal.querySelector('#btn-save-photo');
+      let selectedFile = null;
+
+      input.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+          window.showToast("File too large. Max 2MB.", "error");
+          return;
+        }
+        if (!file.type.startsWith('image/')) {
+          window.showToast("Please select an image file.", "error");
+          return;
+        }
+        selectedFile = file;
+        const url = URL.createObjectURL(file);
+        preview.innerHTML = `<img src="${url}" alt="Preview" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+        saveBtn.style.display = 'inline-flex';
+      });
+
+      saveBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = 'Uploading...';
+        try {
+          const { uploadProfilePhoto } = await import("./documentUploadService.js");
+          const result = await uploadProfilePhoto(selectedFile, s.id);
+          if (result.success) {
+            window.showToast("Profile photo updated!", "success");
+            modal.close();
+            URL.revokeObjectURL(preview.querySelector('img')?.src);
+            window.location.reload(); // Refresh to show new photo
+          } else {
+            window.showToast("Upload failed: " + result.error, "error");
+          }
+        } catch (e) {
+          window.showToast("Upload failed: " + e.message, "error");
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = 'Save Photo';
+        }
+      });
+    };
+
+    // Get student photo from Firestore documents
+    const studentPhoto = s.profilePhotoUrl || s.photoUrl || null;
+    const avatarHtml = studentPhoto 
+      ? `<img src="${studentPhoto}" alt="${s.name}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+      : `<div class="metric-icon violet" style="border-radius: 50%; font-weight: bold; font-size: 1.5rem;">${initials}</div>`;
+
     portalSection.innerHTML = `
       <div class="page-header">
         <div>
           <h1 data-i18n="studentPortal.welcome" data-i18n-args='{"name":"${s.name}"}'>${window.t ? window.t('studentPortal.welcome', { name: s.name }) : 'Welcome back, ' + s.name}</h1>
           <p class="page-subtitle">Here is your personal study portal.</p>
         </div>
-        <div style="display:flex; gap:1rem;">
+        <div style="display:flex; gap:1rem; align-items:center;">
           ${attendanceActionHtml}
         </div>
       </div>
 
       <!-- Top Dashboard Metrics -->
       <div class="metrics-grid">
-        <div class="metric-card" style="align-items: center;">
-          <div class="metric-icon violet" style="border-radius: 50%; font-weight: bold;">${initials}</div>
-          <div>
+        <div class="metric-card" style="align-items: center; text-align: center;">
+          <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); background: var(--bg-card); margin-bottom: 1rem; box-shadow: 0 4px 12px rgba(5,150,105,0.2);">
+            ${avatarHtml}
+          </div>
+          <div style="width: 100%;">
             <div class="metric-label" data-i18n="studentPortal.plan">${window.t ? window.t('studentPortal.plan') : 'Membership Plan'}</div>
             <div class="metric-value" style="font-size: 1.1rem;"><span data-i18n="studentPortal.none" style="display:${s.planName ? 'none' : 'inline'}">None</span><span style="display:${s.planName ? 'inline' : 'none'}">${(s.planName || '').toLowerCase()}</span></div>
+            ${s.profilePhotoUrl ? `<button class="btn btn-ghost btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.5rem; font-size: 0.75rem;">Change Photo</button>` : `<button class="btn btn-primary btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.5rem; font-size: 0.75rem;">Add Photo</button>`}
           </div>
         </div>
         <div class="metric-card" style="align-items: center;">

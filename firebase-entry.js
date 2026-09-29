@@ -42,9 +42,53 @@ window.openReportViewer = openReportViewer;
 window.closeReportViewer = closeReportViewer;
 
 // Expose Document Upload logic globally
-import { uploadGlobalDocument, loadGlobalDocuments } from "./services/documentUploadService.js";
+import { uploadGlobalDocument, loadGlobalDocuments, downloadBase64File } from "./services/documentUploadService.js";
 window.uploadGlobalDocument = uploadGlobalDocument;
 window.loadGlobalDocuments = loadGlobalDocuments;
+window.downloadBase64File = downloadBase64File;
+
+// Ensure downloadBase64File is available immediately (fallback)
+if (typeof window.downloadBase64File !== 'function') {
+  window.downloadBase64File = (base64Data, fileName) => {
+    try {
+      const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        const link = document.createElement('a');
+        link.href = base64Data;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+      const mimeType = matches[1];
+      const base64 = matches[2];
+      const byteString = atob(base64);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([ia], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Download failed:", e);
+      const link = document.createElement('a');
+      link.href = base64Data;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+}
 
 // Initialize Authentication Guard
 initAuthGuard();

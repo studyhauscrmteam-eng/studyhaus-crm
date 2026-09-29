@@ -167,13 +167,42 @@ export const initAdmissionsUI = async () => {
     listenToPendingAdmissions((records) => {
       const tbody = document.getElementById("pending-admissions-body");
       if (!tbody) return;
+      
+      // Update tab badge with count
+      const pendingTab = document.getElementById("tab-pending-approval");
+      if (pendingTab && records.length > 0) {
+        pendingTab.innerHTML = `Pending approval <span style="background:var(--danger); color:white; font-size:10px; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:6px;">${records.length}</span>`;
+        pendingTab.style.background = "var(--danger)";
+        pendingTab.style.color = "white";
+        pendingTab.style.border = "none";
+      } else if (pendingTab) {
+        pendingTab.innerHTML = "Pending approval";
+        pendingTab.style.background = "var(--bg-gray)";
+        pendingTab.style.color = "var(--text-muted)";
+        pendingTab.style.border = "none";
+      }
+      
+      if (!tbody) return;
       if (records.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:2rem; color:var(--text-muted);">No pending admissions.</td></tr>';
         return;
       }
       let html = "";
       records.forEach(r => {
-        const d = r.createdAt ? new Date(r.createdAt.toMillis()).toLocaleDateString() : "Just now";
+        let createdAtDate = null;
+        if (r.createdAt) {
+          if (typeof r.createdAt.toMillis === 'function') {
+            // Firestore Timestamp
+            createdAtDate = new Date(r.createdAt.toMillis());
+          } else if (r.createdAt instanceof Date) {
+            // Date object
+            createdAtDate = r.createdAt;
+          } else if (typeof r.createdAt === 'string' || typeof r.createdAt === 'number') {
+            // ISO string or timestamp
+            createdAtDate = new Date(r.createdAt);
+          }
+        }
+        const d = createdAtDate ? createdAtDate.toLocaleDateString() : "Just now";
         
         let paymentInfo = ``;
         if (r.paymentMethod === "Paid") {

@@ -477,6 +477,140 @@ document.querySelectorAll('.notif-item.unread').forEach(item => {
   });
 });
 
+// ==================== DOCUMENTS (upload / list / download) ====================
+// Loads the document service directly if firebase-entry.js hasn't exposed it
+// (e.g. that module failed to evaluate for an unrelated reason).
+const ensureDocService = async () => {
+  if (typeof window.uploadGlobalDocument === 'function' &&
+      typeof window.loadGlobalDocuments === 'function' &&
+      typeof window.downloadBase64File === 'function') return true;
+  try {
+    const mod = await import('./services/documentUploadService.js');
+    window.uploadGlobalDocument = mod.uploadGlobalDocument;
+    window.loadGlobalDocuments = mod.loadGlobalDocuments;
+    window.downloadBase64File = mod.downloadBase64File;
+    return true;
+  } catch (e) {
+    console.error('Could not load document service:', e);
+    return false;
+  }
+};
+
+window.uploadGenericDocument = async (input) => {
+  if (input.files && input.files.length > 0) {
+    const file = input.files[0];
+    if (typeof showToast === 'function') showToast(`Uploading ${file.name}...`, 'info');
+    try {
+      if (!(await ensureDocService())) {
+        throw new Error("Document service could not be loaded.");
+      }
+      await window.uploadGlobalDocument(file, file.name, "Generic Document");
+      if (typeof showToast === 'function') showToast('Document uploaded successfully!', 'success');
+      input.value = ''; // reset
+      if (typeof window.renderGlobalDocuments === 'function') {
+        window.renderGlobalDocuments();
+      }
+    } catch (e) {
+      console.error("Upload error:", e);
+      if (typeof showToast === 'function') showToast(`Upload failed: ${e.message}`, 'error');
+    }
+  }
+};
+
+window.renderGlobalDocuments = async () => {
+  const container = document.getElementById("document-list-container");
+  if (!container) return;
+
+  if (!document.getElementById("doc-spinner-style")) {
+    const st = document.createElement("style");
+    st.id = "doc-spinner-style";
+    st.textContent = `@keyframes doc-spin { to { transform: rotate(360deg); } }
+      #document-list-container .doc-spinner { width:28px; height:28px; border-radius:50%;
+        border:3px solid rgba(128,128,128,.25); border-top-color: var(--primary, #8b5cf6);
+        animation: doc-spin .8s linear infinite; }`;
+    document.head.appendChild(st);
+  }
+
+  container.innerHTML = `<div style="text-align:center;padding:2rem;"><div class="doc-spinner" style="margin:0 auto;"></div><p style="margin-top:.75rem;color:var(--text-secondary);">Loading documents...</p></div>`;
+  try {
+    if (!(await ensureDocService())) {
+      throw new Error("Document service could not be loaded.");
+    }
+    const docs = await window.loadGlobalDocuments();
+    if (docs.length === 0) {
+      container.innerHTML = `<div style="text-align:center;padding:3rem 1rem;border:1px dashed var(--border);border-radius:12px;background:var(--bg-card);">
+        <div style="font-size:2rem;opacity:0.5;margin-bottom:1rem;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <p style="color:var(--text-secondary);">No documents uploaded yet</p>
+        <p style="color:var(--text-muted);font-size:13px;margin-top:.35rem;">Use the <strong>+ Upload</strong> button above to add one.</p>
+      </div>`;
+      return;
+    }
+
+    let html = `<div style="display:grid;gap:1rem;">`;
+    window.__globalDocs = docs;
+    const escapeHtml = (str) => String(str ?? '').replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+    docs.forEach((doc, index) => {
+      const uploadedAt = doc.uploadedAt ? new Date(doc.uploadedAt) : null;
+      const date = uploadedAt && !isNaN(uploadedAt) ? uploadedAt.toLocaleString() : 'Unknown date';
+      const fileType = doc.fileType || '';
+      let iconSvg = fileType.includes("image")
+        ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`
+        : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+      const title = escapeHtml(doc.title || doc.fileName || 'Untitled');
+      const fileName = escapeHtml(doc.fileName || doc.title || 'document');
+      html += `
+      <div class="data-card" style="display:flex;align-items:center;padding:1rem;gap:1rem;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;">
+        <div style="background:var(--bg-hover);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);">${iconSvg}</div>
+        <div style="flex:1;min-width:0;">
+          <h4 style="margin:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${title}</h4>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">${date}</p>
+        </div>
+        <button type="button" onclick="window.__downloadDoc(${index})" class="btn btn-secondary" style="white-space:nowrap;display:inline-flex;align-items:center;gap:6px;border:none;cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download
+        </button>
+      </div>
+    `;
+    });
+    html += `</div>`;
+    container.innerHTML = html;
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = `<p style="color:#ef4444;text-align:center;">Failed to load documents. ${escapeErr(e)}</p>`;
+  }
+};
+
+const escapeErr = (e) => {
+  const msg = (e && e.message) ? e.message : String(e);
+  return /permission/i.test(msg)
+    ? 'You do not have permission to view these documents.'
+    : 'Please check your connection and try again.';
+};
+
+window.__downloadDoc = async (index) => {
+  const d = (window.__globalDocs || [])[index];
+  if (!d) {
+    if (typeof showToast === 'function') showToast('Document not found.', 'error');
+    return;
+  }
+  if (!d.base64Data) {
+    if (typeof showToast === 'function') showToast('This document\'s data could not be loaded. It may still be syncing.', 'error');
+    return;
+  }
+  if (typeof window.downloadBase64File !== 'function') {
+    const ok = await ensureDocService();
+    if (!ok) {
+      if (typeof showToast === 'function') showToast('Downloader could not be loaded. Please refresh the page.', 'error');
+      return;
+    }
+  }
+  window.downloadBase64File(d.base64Data || '', d.fileName || d.title || 'document');
+};
+
+
 // ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', () => {
   const defaultPage = document.body.getAttribute('data-default-page') || 'dashboard';
@@ -492,72 +626,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }, i * 60);
   });
 
-  window.uploadGenericDocument = async (input) => {
-    if (input.files && input.files.length > 0) {
-      const file = input.files[0];
-      if (typeof showToast === 'function') showToast(`Uploading ${file.name}...`, 'info');
-      try {
-        if (typeof window.uploadGlobalDocument !== 'function') {
-          throw new Error("uploadGlobalDocument not found in window. Ensure firebase-entry.js is loaded.");
-        }
-        await window.uploadGlobalDocument(file, file.name, "Generic Document");
-        if (typeof showToast === 'function') showToast('Document uploaded successfully!', 'success');
-        input.value = ''; // reset
-        if (typeof window.renderGlobalDocuments === 'function') {
-          window.renderGlobalDocuments();
-        }
-      } catch (e) {
-        console.error("Upload error:", e);
-        if (typeof showToast === 'function') showToast(`Upload failed: ${e.message}`, 'error');
-      }
-    }
-  };
-
-  window.renderGlobalDocuments = async () => {
-    const container = document.getElementById("document-list-container");
-    if (!container) return;
-
-    container.innerHTML = `<div style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto;"></div><p>Loading documents...</p></div>`;
-    try {
-      if (typeof window.loadGlobalDocuments !== 'function') {
-        throw new Error("loadGlobalDocuments not found.");
-      }
-      const docs = await window.loadGlobalDocuments();
-      if (docs.length === 0) {
-        container.innerHTML = `<div class="empty-state" style="text-align:center;padding:3rem 1rem;">
-          <div class="empty-icon" style="font-size:2rem;opacity:0.5;margin-bottom:1rem;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          </div>
-          <p style="color:var(--text-secondary);">No documents found</p>
-        </div>`;
-        return;
-      }
-
-      let html = `<div style="display:grid;gap:1rem;">`;
-      docs.forEach(doc => {
-        const date = new Date(doc.uploadedAt).toLocaleString();
-        let iconSvg = doc.fileType.includes("image")
-          ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`
-          : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
-        html += `
-        <div class="data-card" style="display:flex;align-items:center;padding:1rem;gap:1rem;">
-          <div style="background:var(--bg-elevated);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;color:var(--primary);">${iconSvg}</div>
-          <div style="flex:1;min-width:0;">
-            <h4 style="margin:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${doc.title}</h4>
-            <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">${date}</p>
-          </div>
-          <a href="${doc.base64Data}" download="${doc.fileName}" class="btn btn-secondary" style="white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download
-          </a>
-        </div>
-      `;
-      });
-      html += `</div>`;
-      container.innerHTML = html;
-    } catch (e) {
-      console.error(e);
-      container.innerHTML = `<p style="color:var(--danger);text-align:center;">Failed to load documents.</p>`;
-    }
-  };
 
 });

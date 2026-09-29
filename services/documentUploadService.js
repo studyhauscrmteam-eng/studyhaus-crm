@@ -13,7 +13,8 @@ let selfieStream = null;
 
 /**
  * Compress and resize an image File to a base64 string.
- * Max width/height: 800px. Quality: 0.7 (JPEG).
+ * Max width/height: 600px. Quality: 0.6 (JPEG).
+ * Ensures result is under 1MB (Firestore field limit).
  * @param {File} file
  * @returns {Promise<string>} base64 data URL
  */
@@ -31,18 +32,44 @@ const compressImage = (file) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const MAX = 800;
       let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round((height / width) * MAX); width = MAX; }
-        else { width = Math.round((width / height) * MAX); height = MAX; }
+      const MAX_DIM = 600;
+      let quality = 0.6;
+
+      // Scale down if needed
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) { height = Math.round((height / width) * MAX_DIM); width = MAX_DIM; }
+        else { width = Math.round((width / height) * MAX_DIM); height = MAX_DIM; }
       }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+
+      const tryCompress = (q) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        return canvas.toDataURL("image/jpeg", q);
+      };
+
+      // Try with initial quality, reduce if too large
+      let dataUrl = tryCompress(quality);
+      let attempts = 0;
+      const MAX_BYTES = 900000; // Stay safely under Firestore's ~1MB doc limit
+      
+      while (dataUrl.length > MAX_BYTES && attempts < 5) {
+        attempts++;
+        quality = Math.max(0.3, quality - 0.1);
+        dataUrl = tryCompress(quality);
+      }
+
+      // If still too large, reduce dimensions further
+      while (dataUrl.length > MAX_BYTES && (width > 300 || height > 300)) {
+        width = Math.round(width * 0.8);
+        height = Math.round(height * 0.8);
+        dataUrl = tryCompress(quality);
+      }
+
       URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/jpeg", 0.7));
+      resolve(dataUrl);
     };
     img.onerror = reject;
     img.src = url;
@@ -86,38 +113,95 @@ export const uploadAdmissionDocuments = async (files, studentId, onProgress = ()
 
 /**
  * Save a generic document into Firestore.
- * Stored in: globalDocuments
+ * Stored in: globalDocuments (+ globalDocumentChunks for files > 1 chunk)
+ *
+ * Firestore limits a single document to ~1MB, so bigger files are split into
+ * ~700KB base64 chunks written to the `globalDocumentChunks` collection.
  */
+const CHUNK_SIZE = 700000;   // characters of base64 per chunk document
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // hard cap: 10 MB
+
 export const uploadGlobalDocument = async (file, title, description, onProgress = () => { }) => {
+  if (file && file.size > MAX_FILE_SIZE) {
+    onProgress(0);
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    throw new Error(`"${file.name}" is ${sizeMb} MB — maximum allowed size is 10 MB.`);
+  }
+
   onProgress(10);
   const base64 = await compressImage(file);
   onProgress(50);
+
+  const { collection, addDoc, setDoc, deleteDoc, doc: fsDoc } = await import("firebase/firestore");
 
   const docData = {
     title: title || file.name,
     description: description || "",
     fileName: file.name,
     fileType: file.type,
-    base64Data: base64,
     uploadedAt: new Date().toISOString(),
     uploadedBy: localStorage.getItem("userId") || "unknown"
   };
 
-  const { collection, addDoc } = await import("firebase/firestore");
-  const docRef = await addDoc(collection(db, "globalDocuments"), docData);
+  if (base64.length <= CHUNK_SIZE) {
+    docData.base64Data = base64;
+    await addDoc(collection(db, "globalDocuments"), docData);
+  } else {
+    const chunks = [];
+    for (let i = 0; i < base64.length; i += CHUNK_SIZE) {
+      chunks.push(base64.slice(i, i + CHUNK_SIZE));
+    }
+    docData.chunkCount = chunks.length;
+    docData.base64Length = base64.length;
+    docData.base64Data = ""; // placeholder so the field always exists
+
+    const docRef = await addDoc(collection(db, "globalDocuments"), docData);
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        onProgress(50 + Math.round((i / chunks.length) * 49));
+        await setDoc(fsDoc(db, "globalDocumentChunks", `${docRef.id}_${i}`), {
+          docId: docRef.id,
+          part: i,
+          data: chunks[i]
+        });
+      }
+    } catch (e) {
+      // Remove the half-written entry so the list doesn't show a broken document
+      await deleteDoc(docRef).catch(() => { });
+      throw e;
+    }
+  }
+
   onProgress(100);
   setTimeout(() => onProgress(0), 600);
-  return docRef.id;
+  return true;
 };
 
 /**
- * Load generic documents from Firestore
+ * Load generic documents from Firestore (re-assembles chunked files)
  */
 export const loadGlobalDocuments = async () => {
-  const { collection, getDocs, orderBy, query } = await import("firebase/firestore");
+  const { collection, getDocs, orderBy, query, where } = await import("firebase/firestore");
   const q = query(collection(db, "globalDocuments"), orderBy("uploadedAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Re-assemble any documents that were stored in chunks
+  await Promise.all(docs.filter(d => d.chunkCount > 0).map(async d => {
+    try {
+      const cq = query(collection(db, "globalDocumentChunks"), where("docId", "==", d.id));
+      const cs = await getDocs(cq);
+      const parts = cs.docs.map(c => c.data()).sort((a, b) => a.part - b.part);
+      d.base64Data = parts.map(p => p.data).join("");
+      d.missingChunks = parts.length !== d.chunkCount;
+    } catch (e) {
+      console.error("Failed to load document chunks for", d.id, e);
+      d.base64Data = "";
+      d.missingChunks = true;
+    }
+  }));
+
+  return docs;
 };
 
 /**
@@ -128,6 +212,206 @@ export const loadGlobalDocuments = async () => {
 export const loadStudentDocuments = async (studentId) => {
   const snap = await getDoc(doc(db, "studentDocuments", studentId));
   return snap.exists() ? snap.data() : null;
+};
+
+/**
+ * Fields stored per student in `studentDocuments/{studentId}`.
+ */
+export const STUDENT_DOC_FIELDS = [
+  { key: "aadhaarFront", label: "Aadhaar Front", accept: "image/*,.pdf", hint: "Front of ID proof" },
+  { key: "aadhaarBack", label: "Aadhaar Back", accept: "image/*,.pdf", hint: "Back of ID proof" },
+  { key: "selfie", label: "Selfie Photo", accept: "image/*", hint: "Live / uploaded selfie" },
+  { key: "profilePhoto", label: "Profile Photo", accept: "image/*", hint: "Profile picture" },
+];
+
+const notify = (msg, type = "info") => {
+  if (typeof window !== "undefined" && typeof window.showToast === "function") window.showToast(msg, type);
+  else console.log(`[${type}] ${msg}`);
+};
+
+/** Save/replace one document field for a student. */
+export const uploadStudentDocument = async (studentId, key, file) => {
+  if (!studentId) throw new Error("Missing student ID.");
+  if (!file) throw new Error("No file selected.");
+  if (file.size > MAX_FILE_SIZE) {
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    throw new Error(`"${file.name}" is ${sizeMb} MB — maximum allowed size is 10 MB.`);
+  }
+  const base64 = await compressImage(file);
+  await setDoc(
+    doc(db, "studentDocuments", studentId),
+    { studentId, [key]: base64, updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+  return true;
+};
+
+/** Remove one document field for a student. */
+export const removeStudentDocument = async (studentId, key) => {
+  const { deleteField } = await import("firebase/firestore");
+  await setDoc(doc(db, "studentDocuments", studentId), { [key]: deleteField() }, { merge: true });
+  return true;
+};
+
+// Remember the last rendered list so uploads can refresh it
+let lastDocRender = { studentId: null, containerId: "student-documents-list" };
+
+/**
+ * Render the student's documents with working Preview / Download / Upload / Remove.
+ * @param {string} studentId - Student ID
+ * @param {string} containerId - Container element ID
+ */
+export const renderStudentDocuments = async (studentId, containerId = "student-documents-list") => {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  lastDocRender = { studentId, containerId };
+
+  container.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-muted);">Loading documents…</div>`;
+
+  let docs = null;
+  try {
+    docs = await loadStudentDocuments(studentId);
+    if (typeof window !== "undefined") window.__studentDocsCache = docs || {};
+  } catch (e) {
+    console.error("Failed to load student documents:", e);
+    const permission = /permission/i.test((e && e.message) || "");
+    container.innerHTML = `<div style="text-align:center;padding:2rem;border:1px dashed var(--border);border-radius:12px;color:#ef4444;">
+      ${permission
+        ? "You don't have permission to view these documents."
+        : "Could not load documents: " + ((e && e.message) || "unknown error")}
+    </div>`;
+    return;
+  }
+
+  let html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;">`;
+
+  for (const { key, label, accept, hint } of STUDENT_DOC_FIELDS) {
+    const base64 = docs ? docs[key] : null;
+    const isImage = typeof base64 === "string" && base64.startsWith("data:image");
+    const hasFile = typeof base64 === "string" && base64.length > 0;
+
+    const preview = hasFile
+      ? (isImage
+        ? `<img src="${base64}" alt="${label}" style="width:100%;height:110px;object-fit:cover;border-radius:8px;background:#000;">`
+        : `<div style="width:100%;height:110px;border-radius:8px;background:var(--bg-hover);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">
+             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+             <span style="font-size:11px;color:var(--text-muted);">File</span>
+           </div>`)
+      : `<div style="width:100%;height:110px;border-radius:8px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;text-align:center;padding:8px;">
+           No file yet
+         </div>`;
+
+    html += `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:.75rem;background:var(--bg-card);display:flex;flex-direction:column;gap:.5rem;">
+        <div style="overflow:hidden;border-radius:8px;">${preview}</div>
+        <div style="font-weight:600;font-size:12px;">${label}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:-4px;">${hint}</div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;margin-top:auto;">
+          <button type="button" class="btn btn-primary" style="width:100%;font-size:12px;padding:7px;${hasFile ? "" : "opacity:.45;cursor:not-allowed;"}"
+            ${hasFile ? `onclick="window.__downloadStudentDoc('${key}')"` : "disabled"}>Download</button>
+          <label class="btn btn-secondary" style="width:100%;font-size:12px;padding:7px;margin:0;cursor:pointer;text-align:center;">
+            ${hasFile ? "Replace" : "Upload"}
+            <input type="file" accept="${accept}" style="display:none;"
+              onchange="window.__uploadStudentDoc('${studentId}', '${key}', this, '${containerId}')" />
+          </label>
+          ${hasFile ? `<button type="button" class="btn btn-ghost" style="width:100%;font-size:11px;padding:5px;color:#ef4444;"
+            onclick="window.__removeStudentDoc('${studentId}', '${key}', '${containerId}')">Remove</button>` : ""}
+        </div>
+      </div>`;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+};
+
+// ── Global handlers (used by inline onclick/onchange above) ──
+if (typeof window !== "undefined") {
+  window.__downloadStudentDoc = (key) => {
+    const docs = window.__studentDocsCache || {};
+    const base64 = docs[key];
+    if (!base64) {
+      notify("No file uploaded for this item yet.", "error");
+      return;
+    }
+    downloadBase64File(base64, `${key}_${lastDocRender.studentId || "student"}`);
+  };
+
+  window.__uploadStudentDoc = async (studentId, key, input, containerId) => {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    notify(`Uploading ${file.name}…`, "info");
+    try {
+      await uploadStudentDocument(studentId, key, file);
+      notify("Document uploaded successfully!", "success");
+      if (input) input.value = "";
+      await renderStudentDocuments(studentId, containerId || lastDocRender.containerId);
+    } catch (e) {
+      console.error("Student document upload failed:", e);
+      notify("Upload failed: " + ((e && e.message) || "unknown error"), "error");
+    }
+  };
+
+  window.__removeStudentDoc = async (studentId, key, containerId) => {
+    if (!confirm("Remove this document?")) return;
+    try {
+      await removeStudentDocument(studentId, key);
+      notify("Document removed.", "info");
+      await renderStudentDocuments(studentId, containerId || lastDocRender.containerId);
+    } catch (e) {
+      console.error("Student document delete failed:", e);
+      notify("Remove failed: " + ((e && e.message) || "unknown error"), "error");
+    }
+  };
+}
+
+/**
+ * Download a base64 document/image
+ * @param {string} base64Data - Base64 data URL
+ * @param {string} fileName - File name for download
+ */
+export const downloadBase64File = (base64Data, fileName) => {
+  try {
+    // Extract mime type and data
+    const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      // Try direct base64
+      const link = document.createElement('a');
+      link.href = base64Data;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+    
+    const mimeType = matches[1];
+    const base64 = matches[2];
+    const byteString = atob(base64);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("Download failed:", e);
+    // Fallback
+    const link = document.createElement('a');
+    link.href = base64Data;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 };
 
 // ──────────────────────────────────────────────

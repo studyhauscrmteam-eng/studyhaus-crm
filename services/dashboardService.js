@@ -56,7 +56,7 @@ export const initDashboardListeners = () => {
     updateElement("metric-visitors-today", stats.todayCount);
   }, (err) => console.error("Visitors listener error:", err));
 
-  // 4. Listen to Students (Active & Old) and Occupancy
+  // 4. Listen to Students (Active & Old)
   const studentsQuery = query(collection(db, "students"));
   onSnapshot(studentsQuery, (snapshot) => {
     let activeStudents = 0;
@@ -70,20 +70,33 @@ export const initDashboardListeners = () => {
       if (data.seatNumber && data.status !== "Old") occupiedSeats++;
     });
 
-    const totalSeats = snapshot.size; // Dynamic count from Firestore
-    const occupancyPercentage = Math.round((occupiedSeats / totalSeats) * 100);
-
     updateElement("metric-active-students", `${activeStudents} <span style="font-size: 0.9rem; font-weight: normal; color: var(--text-muted); display: block; margin-top: 0.2rem;">${oldStudents} Old Students</span>`);
-    updateElement("metric-occupancy-percent", `${occupancyPercentage}%`);
-    updateElement("metric-occupancy-fraction", `${occupiedSeats} / ${totalSeats} seats taken`);
   }, (err) => console.error("Students listener error:", err));
 
-  // 4. Listen to Pending Payments Panel (Only update the metric tile now)
+  // 5. Listen to Seats for REAL occupancy (separate from students)
+  const seatsQuery = query(collection(db, "seats"));
+  onSnapshot(seatsQuery, (snapshot) => {
+    let available = 0, occupied = 0, reserved = 0, maintenance = 0;
+    
+    snapshot.forEach(doc => {
+      const s = doc.data();
+      if (s.status === "Available") available++;
+      else if (s.status === "Occupied") occupied++;
+      else if (s.status === "Reserved") reserved++;
+      else if (s.status === "Maintenance") maintenance++;
+    });
+    
+    const total = available + occupied + reserved + maintenance;
+    const occupancyPercent = total > 0 ? Math.round((occupied / total) * 100) : 0;
+    
+    updateElement("metric-occupancy-percent", `${occupancyPercent}%`);
+    updateElement("metric-occupancy-fraction", `${occupied} / ${total} seats taken`);
+  }, (err) => console.error("Seats listener error:", err));
+
+  // 6. Listen to Pending Payments Panel
   listenToPendingPayments((data) => {
-    // Update footer total
     updateElement("pending-total-today", formatCurrency(data.totalPendingToday));
   }, (err) => console.error("Pending payments listener error:", err));
 
   // Note: Upcoming Renewals feed is now handled by dashboardReminderUI.js
-
 };
