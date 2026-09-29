@@ -20,6 +20,7 @@ import { initDashboardReminders } from "./services/dashboardReminderUI.js";
 import { initRenewalAdminUI, renderRenewalForm, renderRenewalHistory } from "./services/renewalAdminUI.js";
 import { websiteAdminUI } from "./services/websiteAdminUI.js";
 import { openReportViewer, closeReportViewer } from "./services/reportAdminUI.js";
+import { initAnalyticsUI } from "./services/analyticsService.js";
 import { initAnnouncementAdminUI } from "./services/announcementAdminUI.js";
 import { initStaffAdminUI } from "./services/staffAdminUI.js";
 import { initTasksAdminUI } from "./services/tasksAdminUI.js";
@@ -143,6 +144,8 @@ document.addEventListener("DOMContentLoaded", () => {
     initSettingsAdminUI();
     // Initialize Website CMS Module
     websiteAdminUI.init();
+    // Initialize the Analytics page (live Firestore numbers)
+    initAnalyticsUI();
   }
 });
 

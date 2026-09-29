@@ -7,6 +7,33 @@ let allSeats = [];
 let unsubscribe = null;
 let currentFilters = { status: "All", search: "", floor: "Ground Floor" };
 
+// ── Seat naming helpers ─────────────────────────────────────────────────────
+// The physical room layouts below are hardcoded for seats named A1..A68
+// (Ground Floor) and B1..B40 (First Floor). Imported floors may use other
+// naming schemes (e.g. "2".."40" or "R1".."R20") — those must fall back to
+// the generic responsive grid so every real seat is still rendered.
+const AB_SEAT_PATTERN = /^[AB]\d+$/;
+
+// Numeric-aware ordering so seats sort naturally:
+//   2, 3, ..., 10, ..., 40  and  R1, R2, ..., R5, ..., R9, R10, ..., R20
+// (localeCompare with numeric:true avoids R10 sorting before R9).
+const compareSeatNumbers = (a, b) =>
+  String(a == null ? "" : a).localeCompare(String(b == null ? "" : b), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+// True when this floor's seats are A/B-named, i.e. the hardcoded room layout
+// can be painted. An empty floor keeps the existing (placeholder) layout so
+// current behaviour is unchanged when no seats exist yet; any floor with seats
+// that are not ALL A/B-named renders the generic grid instead.
+const shouldUseABLayout = (seats) => {
+  if (!Array.isArray(seats) || seats.length === 0) return true;
+  const firstIsAB = AB_SEAT_PATTERN.test(String(seats[0] && seats[0].seatNumber));
+  if (!firstIsAB) return false;
+  return seats.every(s => AB_SEAT_PATTERN.test(String(s && s.seatNumber)));
+};
+
 export const initSeatMapUI = async (mode, containerId) => {
   // ── SIGNUP / SELF-ADMISSION MODE ─────────────────────────────────────────
   if (mode === "signup" && containerId) {
@@ -126,6 +153,56 @@ export const initSeatMapUI = async (mode, containerId) => {
       const firstCol3 = [null, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => n ? 'B' + n : null);
       const firstCol4 = [40, 39, 38, 37, 36, 35, 34, 33, 32, 31, null].map(n => n ? 'B' + n : null);
 
+      // Generic responsive grid — every seat of this floor, natural order,
+      // existing status colors and the existing "pickable" (Available only)
+      // logic. Used for non-A/B floors and as the fallback for custom floors.
+      const paintSignupGenericGrid = () => {
+        grid.style.display = "grid";
+        grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(70px,1fr))";
+        grid.style.gap = "0.6rem";
+
+        const sortedSeats = [...floorSeats].sort((a, b) =>
+          compareSeatNumbers(a.seatNumber, b.seatNumber));
+
+        let fallbackHtml = sortedSeats.map(seat => {
+          const isSelected = seat.id === signupSelectedId;
+          const isPickable = seat.status === "Available";
+
+          let bg = "#f8fafc", border = "1px solid #e2e8f0", color = "#0f172a", cursor = "not-allowed", opacity = "0.55";
+          if (seat.status === "Available")   { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; color = "#166534"; cursor = "pointer"; opacity = "1"; }
+          if (seat.status === "Occupied")    { bg = "#fef2f2"; border = "1px solid #fecaca"; color = "#991b1b"; }
+          if (seat.status === "Reserved")    { bg = "#fffbeb"; border = "1px solid #fde68a"; color = "#92400e"; }
+          if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; color = "#1e40af"; }
+
+          if (isSelected) { bg = "#0f172a"; border = "2px solid #0f172a"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
+
+          return `
+            <div
+              onclick="window._signupSelectSeat('${seat.id}', '${seat.seatNumber}', ${isPickable})"
+              title="${seat.status}${!isPickable ? ' – not selectable' : ''}"
+              style="background:${bg}; border:${border}; color:${color}; opacity:${opacity};
+                     border-radius:8px; height:46px; display:flex; align-items:center;
+                     justify-content:center; cursor:${cursor}; transition:box-shadow 0.15s, border-color 0.15s;
+                     font-size:13px; font-weight:600;"
+              onmouseover="if(${isPickable}) { this.style.boxShadow='0 0 0 2px currentColor'; }"
+              onmouseout="this.style.boxShadow='none';"
+            >
+              ${isSelected ? "✓ " : ""}${seat.seatNumber}
+            </div>
+          `;
+        }).join("");
+
+        grid.innerHTML = fallbackHtml;
+      };
+
+      // Seats not named A*/B* (e.g. Ground Floor "2".."40", First Floor
+      // "R1".."R20") don't fit the hardcoded room layout — paint them all in
+      // the generic grid instead.
+      if (!shouldUseABLayout(floorSeats)) {
+        paintSignupGenericGrid();
+        return;
+      }
+
       let html = "";
       if (signupCurrentFloor === "First Floor") {
         html = `
@@ -180,39 +257,8 @@ export const initSeatMapUI = async (mode, containerId) => {
           </div>
         `;
       } else {
-        grid.style.display = "grid";
-        grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(70px,1fr))";
-        grid.style.gap = "0.6rem";
-        
-        let fallbackHtml = floorSeats.map(seat => {
-          const isSelected = seat.id === signupSelectedId;
-          const isPickable = seat.status === "Available";
-
-          let bg = "#f8fafc", border = "1px solid #e2e8f0", color = "#0f172a", cursor = "not-allowed", opacity = "0.55";
-          if (seat.status === "Available")   { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; color = "#166534"; cursor = "pointer"; opacity = "1"; }
-          if (seat.status === "Occupied")    { bg = "#fef2f2"; border = "1px solid #fecaca"; color = "#991b1b"; }
-          if (seat.status === "Reserved")    { bg = "#fffbeb"; border = "1px solid #fde68a"; color = "#92400e"; }
-          if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; color = "#1e40af"; }
-
-          if (isSelected) { bg = "#0f172a"; border = "2px solid #0f172a"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
-
-          return `
-            <div
-              onclick="window._signupSelectSeat('${seat.id}', '${seat.seatNumber}', ${isPickable})"
-              title="${seat.status}${!isPickable ? ' – not selectable' : ''}"
-              style="background:${bg}; border:${border}; color:${color}; opacity:${opacity};
-                     border-radius:8px; height:46px; display:flex; align-items:center;
-                     justify-content:center; cursor:${cursor}; transition:box-shadow 0.15s, border-color 0.15s;
-                     font-size:13px; font-weight:600;"
-              onmouseover="if(${isPickable}) { this.style.boxShadow='0 0 0 2px currentColor'; }"
-              onmouseout="this.style.boxShadow='none';"
-            >
-              ${isSelected ? "✓ " : ""}${seat.seatNumber}
-            </div>
-          `;
-        }).join("");
-        
-        grid.innerHTML = fallbackHtml;
+        // Fallback for any other custom floor (already non-A/B checked above).
+        paintSignupGenericGrid();
         return;
       }
 
@@ -712,9 +758,10 @@ const triggerAssignSeat = async (seat, studentEmailOrId) => {
 const updateSeatAnalysis = (seats) => {
   const occupied = seats.filter(s => s.status === "Occupied").length;
   const available = seats.filter(s => s.status === "Available").length;
+  const floorCount = new Set(seats.map(s => s.floor || "Ground Floor")).size;
   const subtitle = document.getElementById("seat-subtitle");
   if (subtitle) {
-    subtitle.innerText = `${occupied} occupied · ${available} available across 3 floors`;
+    subtitle.innerText = `${occupied} occupied · ${available} available across ${floorCount} floor${floorCount === 1 ? "" : "s"}`;
   }
 };
 
@@ -821,6 +868,33 @@ const updateSeatAnalysis = (seats) => {
     const firstCol3 = [null, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => n ? 'B' + n : null);
     const firstCol4 = [40, 39, 38, 37, 36, 35, 34, 33, 32, 31, null].map(n => n ? 'B' + n : null);
 
+    // Generic responsive grid — every seat of this floor in natural order,
+    // reusing the existing renderSeatCard markup/colors, so seat click
+    // (window.handleSeatClick) and status/search filtering keep working.
+    const paintAdminGenericGrid = () => {
+      grid.style.display = "grid";
+      grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(85px, 1fr))";
+      grid.style.gap = "1rem";
+
+      const sortedSeats = [...filtered].sort((a, b) =>
+        compareSeatNumbers(a.seatNumber, b.seatNumber));
+
+      let fallbackHtml = "";
+      sortedSeats.forEach(seat => {
+        fallbackHtml += renderSeatCard(seat.seatNumber);
+      });
+
+      grid.innerHTML = fallbackHtml;
+    };
+
+    // Seats not named A*/B* (e.g. Ground Floor "2".."40", First Floor
+    // "R1".."R20") don't fit the hardcoded room layout — paint them all in
+    // the generic grid instead of the hardcoded columns.
+    if (!shouldUseABLayout(filtered)) {
+      paintAdminGenericGrid();
+      return;
+    }
+
     let html = "";
 
     if (currentFilters.floor === "First Floor") {
@@ -876,18 +950,8 @@ const updateSeatAnalysis = (seats) => {
         </div>
       `;
     } else {
-      // Fallback for other custom floors
-      grid.style.display = "grid";
-      grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(85px, 1fr))";
-      grid.style.gap = "1rem";
-      
-      let fallbackHtml = "";
-      filtered.forEach(seat => {
-        fallbackHtml += renderSeatCard(seat.seatNumber);
-      });
-      html = fallbackHtml;
-      
-      grid.innerHTML = html;
+      // Fallback for other custom floors (already non-A/B checked above)
+      paintAdminGenericGrid();
       return;
     }
 

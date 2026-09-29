@@ -30,6 +30,29 @@ const generateRange = (prefix, start, end) => {
   return arr;
 };
 
+// ── Seat naming helpers ─────────────────────────────────────────────────────
+// The hardcoded room layouts below only cover A1..A68 / B1..B40. Imported
+// floors may use other names (e.g. "2".."40" or "R1".."R20") — those fall
+// back to a generic grid so every real seat still renders.
+const AB_SEAT_PATTERN = /^[AB]\d+$/;
+
+// Numeric-aware ordering: 2,3,...,10,...,40 and R1,R2,...,R9,R10,...,R20
+// (so "R10" sorts after "R9" instead of lexically before it).
+const compareSeatNumbers = (a, b) =>
+  String(a == null ? "" : a).localeCompare(String(b == null ? "" : b), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+// True when this floor's seats are A/B-named (hardcoded layout applies).
+// An empty floor keeps the existing placeholder layout (unchanged behaviour).
+const shouldUseABLayout = (seats) => {
+  if (!Array.isArray(seats) || seats.length === 0) return true;
+  const firstIsAB = AB_SEAT_PATTERN.test(String(seats[0] && seats[0].seatNumber));
+  if (!firstIsAB) return false;
+  return seats.every(s => AB_SEAT_PATTERN.test(String(s && s.seatNumber)));
+};
+
 const fetchMissingPhotos = async (records) => {
   for (const rec of records) {
     if (studentPhotos[rec.studentId] === undefined) {
@@ -295,6 +318,22 @@ const renderLiveMap = () => {
   const firstCol3 = [null, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => n ? 'B' + n : null);
   const firstCol4 = [40, 39, 38, 37, 36, 35, 34, 33, 32, 31, null].map(n => n ? 'B' + n : null);
 
+  // ── Generic grid for non-A/B floors ─────────────────────────────────────
+  // Imported floors ("2".."40", "R1".."R20") don't match the hardcoded room
+  // columns, so paint every seat of the current floor in natural order using
+  // the SAME card renderer (occupancy join with `attendance` is unchanged).
+  const floorSeats = allSeats.filter(s => (s.floor || "Ground Floor") === currentFloor);
+  if (!shouldUseABLayout(floorSeats)) {
+    const sortedSeats = [...floorSeats].sort((a, b) =>
+      compareSeatNumbers(a.seatNumber, b.seatNumber));
+    const genericHtml = sortedSeats.map(seat => renderSeatCard(seat.seatNumber)).join("");
+    grid.style.display = "grid";
+    grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(70px,1fr))";
+    grid.style.gap = "0.6rem";
+    grid.innerHTML = genericHtml;
+    return;
+  }
+
   let html = '';
 
   if (currentFloor === 'First Floor') {
@@ -330,6 +369,12 @@ const renderLiveMap = () => {
       </div>
     `;
   }
+
+  // Clear inline grid styles possibly left behind by a non-A/B (generic) floor
+  // so the hardcoded room layout keeps its original block layout.
+  grid.style.display = "";
+  grid.style.gridTemplateColumns = "";
+  grid.style.gap = "";
 
   grid.innerHTML = html;
 };
