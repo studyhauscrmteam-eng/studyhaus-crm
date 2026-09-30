@@ -1,137 +1,190 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Students can read/write their own profile
-    match /students/{studentId} {
-      allow read, write: if request.auth != null && request.auth.uid == studentId;
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
     }
-    
-    // Admissions: students can create, admins can read/write
-    match /admissions/{admissionId} {
-      allow create: if request.auth != null;
-      allow read, write: if request.auth != null && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager'];
+    function userExists() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
-    
-    // Payments: students read own, admins read/write all
-    match /payments/{paymentId} {
-      allow read: if request.auth != null && 
-        (resource.data.studentId == request.auth.uid || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
-      allow write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+    function myRole() {
+      return userExists()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : null;
     }
-    
-    // Seats: admins read/write, students read own
-    match /seats/{seatId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+    function hasRole(roles) {
+      return userExists() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in roles;
     }
-    
-    // Membership plans: all authenticated read, admins write
-    match /membershipPlans/{planId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+    // Include legacy variants: some docs store "Admin"/"Owner" instead of "Owner/Admin"
+    function isStaff() {
+      return hasRole(['Owner/Admin', 'Owner', 'Admin', 'Manager', 'Employee']);
     }
-    
-    // Attendance: students read own, admins read/write all
-    match /attendance/{attendanceId} {
-      allow read: if request.auth != null && 
-        (resource.data.studentId == request.auth.uid || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
-      allow write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+    function isManagerUp() {
+      return hasRole(['Owner/Admin', 'Owner', 'Admin', 'Manager']);
     }
-    
-    // Users: admins read/write, students read own
+    function isOwner() {
+      return hasRole(['Owner/Admin', 'Owner', 'Admin']);
+    }
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+    function isOwnDoc() {
+      return signedIn() && resource.data.get('studentId', null) == request.auth.uid;
+    }
+
+    // ---------- users ----------
+    // Register writes users/{uid} right after Auth creation, so self-create must not
+    // depend on get(users/uid) (doc doesn't exist yet).
     match /users/{userId} {
-      allow read: if request.auth != null && 
-        (request.auth.uid == userId || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
-      allow write: if request.auth != null && 
-        (request.auth.uid == userId || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
+      allow create: if isSelf(userId);
+      allow read: if isSelf(userId) || isStaff();
+      allow update: if isSelf(userId) || isManagerUp();
+      allow delete: if isOwner();
     }
-    
-    // Settings: admins only
+
+    // Legacy role-named collections used as login fallback (read-only fallback).
+    match /Manager/{docId} {
+      allow read: if signedIn() && (request.auth.uid == docId || isStaff());
+      allow write: if isManagerUp();
+    }
+    match /Employee/{docId} {
+      allow read: if signedIn() && (request.auth.uid == docId || isStaff());
+      allow write: if isManagerUp();
+    }
+    match /Owner/{docId} {
+      allow read: if signedIn() && (request.auth.uid == docId || isStaff());
+      allow write: if isOwner();
+    }
+    match /Admin/{docId} {
+      allow read: if signedIn() && (request.auth.uid == docId || isStaff());
+      allow write: if isOwner();
+    }
+
+    // ---------- students (FIXED: admins could not read at all before) ----------
+    match /students/{studentId} {
+      allow read: if isStaff() || isSelf(studentId);
+      allow create: if signedIn();
+      allow update: if isStaff() || isSelf(studentId);
+      allow delete: if isManagerUp();
+    }
+
+    // ---------- admissions ----------
+    match /admissions/{admissionId} {
+      allow create: if signedIn();
+      allow read: if isStaff();
+      allow update, delete: if isManagerUp();
+    }
+
+    // ---------- payments (FIXED: students could not create payment requests) ----------
+    match /payments/{paymentId} {
+      allow read: if isStaff() || isOwnDoc();
+      allow create: if signedIn();
+      allow update, delete: if isStaff();
+    }
+
+    // ---------- seats ----------
+    match /seats/{seatId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    // ---------- membership plans ----------
+    match /membershipPlans/{planId} {
+      allow read: if signedIn();
+      allow write: if isManagerUp();
+    }
+
+    // ---------- attendance (FIXED: students could not check in) ----------
+    match /attendance/{attendanceId} {
+      allow read: if isStaff() || isOwnDoc();
+      allow create: if signedIn();
+      allow update, delete: if isStaff();
+    }
+
+    // ---------- settings ----------
     match /settings/{settingId} {
-      allow read, write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+      allow read: if isStaff();
+      allow write: if isManagerUp();
     }
-    
-    // Documents: students read own, admins read all
+
+    // ---------- documents ----------
     match /documents/{documentId} {
-      allow read: if request.auth != null && 
-        (resource.data.studentId == request.auth.uid || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
-      allow write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+      allow read: if isStaff() || isOwnDoc();
+      allow create: if signedIn();
+      allow update, delete: if isStaff();
     }
-    
-    // Global (shared) documents uploaded from the Documents page
-    // Read: any signed-in user (the list is shown to Admin/Manager/Student dashboards)
-    // Write: any signed-in user can add; only admins/managers can modify/remove
+
     match /globalDocuments/{documentId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager'];
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isStaff();
     }
 
-    // Parts of oversized global documents (>1MB total, split into ~700KB chunks)
     match /globalDocumentChunks/{chunkId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager'];
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isStaff();
     }
 
-    // Per-student admission documents (aadhaar/selfie stored as base64)
     match /studentDocuments/{studentId} {
-      allow read, write: if request.auth != null &&
-        (request.auth.uid == studentId ||
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
-      allow create: if request.auth != null;
+      allow read: if isStaff() || isSelf(studentId);
+      allow create: if signedIn();
+      allow update, delete: if isStaff() || isSelf(studentId);
     }
 
-    // Complaints: students create/read own, admins read/write all
+    // ---------- complaints ----------
     match /complaints/{complaintId} {
-      allow read: if request.auth != null && 
-        (resource.data.studentId == request.auth.uid || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
-      allow create: if request.auth != null;
-      allow write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+      allow read: if isStaff() || isOwnDoc();
+      allow create: if signedIn();
+      allow update, delete: if isStaff();
     }
-    
-    // Renewals: students read own, admins read/write
+
+    // ---------- renewals ----------
     match /renewals/{renewalId} {
-      allow read: if request.auth != null && 
-        (resource.data.studentId == request.auth.uid || 
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']));
-      allow write: if request.auth != null && 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Owner/Admin', 'Manager']);
+      allow read: if isStaff() || isOwnDoc();
+      allow create: if signedIn();
+      allow update, delete: if isStaff();
+    }
+
+    // ---------- MISSING collections (were default-deny = permission-denied) ----------
+    match /visitors/{visitorId} {
+      allow read, write: if isStaff();
+    }
+    match /visitorPurposes/{purposeId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+    match /expenses/{expenseId} {
+      allow read: if isStaff();
+      allow write: if isManagerUp();
+    }
+    match /expenseCategories/{categoryId} {
+      allow read: if signedIn();
+      allow write: if isManagerUp();
+    }
+    match /messageTemplates/{templateId} {
+      allow read, write: if isStaff();
+    }
+    match /messageLogs/{logId} {
+      allow read, write: if isStaff();
+    }
+    match /announcements/{announcementId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+    match /reminders/{reminderId} {
+      allow read, write: if isStaff();
+    }
+    match /staff/{staffId} {
+      allow read: if isStaff();
+      allow write: if isManagerUp();
+    }
+    match /tasks/{taskId} {
+      allow read, write: if isStaff();
     }
   }
 }
