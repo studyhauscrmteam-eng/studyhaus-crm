@@ -10,11 +10,6 @@ service cloud.firestore {
       return signedIn() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
-    function myRole() {
-      return userExists()
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
-        : null;
-    }
     function hasRole(roles) {
       return userExists() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in roles;
