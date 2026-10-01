@@ -94,14 +94,18 @@ if (typeof window.downloadBase64File !== 'function') {
 // Initialize Authentication Guard
 initAuthGuard();
 
-// When DOM is loaded, enforce module-level permissions and init live dashboard
-document.addEventListener("DOMContentLoaded", () => {
+import { onAuthStateChanged } from "./services/authService.js";
+
+let __crmInitDone = false;
+const initCrmModules = () => {
+  if (__crmInitDone) return;
+  __crmInitDone = true;
   // Move all dialogs to body to prevent them from failing to open if their parent page is hidden
-  document.querySelectorAll("dialog").forEach(d => document.body.appendChild(d));
+  document.querySelectorAll("dialog").forEach((d) => document.body.appendChild(d));
 
   const role = localStorage.getItem("userRole");
-  if (role) {
-    enforceModulePermissions(role);
+  if (!role) return;
+  enforceModulePermissions(role);
     // Initialize real-time dashboard listeners if we're on the dashboard
     initDashboardListeners();
     // Initialize the new unified Dashboard Reminders
@@ -146,7 +150,21 @@ document.addEventListener("DOMContentLoaded", () => {
     websiteAdminUI.init();
     // Initialize the Analytics page (live Firestore numbers)
     initAnalyticsUI();
-  }
-});
+};
+
+// Wait for real Firebase Auth (not just localStorage) before attaching
+// any Firestore snapshot listeners. Starting them with request.auth == null
+// is what caused the flood of permission-denied errors.
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
+    onAuthStateChanged((user) => {
+      if (user) initCrmModules();
+    });
+  });
+} else {
+  onAuthStateChanged((user) => {
+    if (user) initCrmModules();
+  });
+}
 
 // console.log("Firebase setup complete. Guard active.");

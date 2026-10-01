@@ -17,8 +17,8 @@ export const initComplaintAdminUI = () => {
     const modalDiv = document.createElement("div");
     modalDiv.innerHTML = `
       <dialog id="resolve-complaint-modal" style="padding:0; border:none; border-radius:12px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); width:90%; max-width:400px;">
-        <div style="padding:1.5rem; background:#fff; border-bottom:1px solid #e2e8f0;">
-          <h2 style="font-size:1.25rem; font-weight:700; color:#0f172a; margin:0;" id="resolve-modal-title">Resolve Complaint</h2>
+        <div style="padding:1.5rem; background:var(--bg-card); border-bottom:1px solid var(--border);">
+          <h2 style="font-size:1.25rem; font-weight:700; color:var(--text-primary); margin:0;" id="resolve-modal-title">Resolve Complaint</h2>
         </div>
         <form id="form-resolve-complaint" onsubmit="event.preventDefault(); window.submitResolveComplaint()" style="padding:1.5rem;">
           <input type="hidden" id="resolve-complaint-id" />
@@ -27,12 +27,12 @@ export const initComplaintAdminUI = () => {
           <input type="hidden" id="resolve-complaint-category" />
           
           <div class="form-group" style="margin-bottom:1.5rem;">
-            <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem; font-weight:600; color:#475569;">Resolution Note (Optional)</label>
+            <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem; font-weight:600; color:var(--text-secondary);">Resolution Note (Optional)</label>
             <textarea id="resolve-complaint-note" rows="3" class="input-field" placeholder="E.g., Replaced the faulty bulb." style="width:100%; box-sizing:border-box; padding:0.5rem; border: 1px solid var(--border); border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
           </div>
           <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
-            <button type="button" class="btn btn-ghost" onclick="document.getElementById('resolve-complaint-modal').close()" style="padding:8px 16px; border:1px solid #e2e8f0; border-radius:999px; background:transparent;">Cancel</button>
-            <button type="submit" id="btn-save-resolve" class="btn btn-primary" style="padding:8px 16px; border:none; border-radius:999px; background:#0f172a; color:#fff;">Mark Resolved</button>
+            <button type="button" class="btn btn-ghost" onclick="document.getElementById('resolve-complaint-modal').close()" style="padding:8px 16px; border:1px solid var(--border); border-radius:999px; background:transparent;">Cancel</button>
+            <button type="submit" id="btn-save-resolve" class="btn btn-primary" style="padding:8px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Mark Resolved</button>
           </div>
         </form>
       </dialog>
@@ -55,7 +55,7 @@ export const initComplaintAdminUI = () => {
           <input type="text" id="complaint-search" placeholder="Search by student, seat, or ID..." />
         </div>
         
-        <select id="complaint-filter-category" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-color); color: var(--text-color);">
+        <select id="complaint-filter-category" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary);">
           <option value="All">All Categories</option>
           <option value="Noise">Noise</option>
           <option value="Light">Light</option>

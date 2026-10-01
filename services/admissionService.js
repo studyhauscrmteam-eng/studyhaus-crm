@@ -217,8 +217,8 @@ export const initAdmissionsUI = async () => {
         html += `
           <tr>
             <td>
-              <div style="font-weight:600; color:#0f172a;">${r.name}</div>
-              <div style="font-size:11px; color:#94a3b8;">${r.email || ""}</div>
+              <div style="font-weight:600; color:var(--text-primary);">${r.name}</div>
+              <div style="font-size:11px; color:var(--text-muted);">${r.email || ""}</div>
               ${paymentInfo}
             </td>
             <td>${r.phone}</td>
@@ -302,23 +302,23 @@ export const initAdmissionsUI = async () => {
     const pendBtn = document.getElementById("tab-pending-approval");
     
     if (isNew) {
-      newBtn.style.background = "#fff";
-      newBtn.style.color = "#0f172a";
-      newBtn.style.border = "1px solid #e2e8f0";
+      newBtn.style.background = "var(--bg-card)";
+      newBtn.style.color = "var(--text-primary)";
+      newBtn.style.border = "1px solid var(--border)";
       newBtn.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
       
-      pendBtn.style.background = "#f1f5f9";
-      pendBtn.style.color = "#64748b";
+      pendBtn.style.background = "var(--bg-hover)";
+      pendBtn.style.color = "var(--text-secondary)";
       pendBtn.style.border = "none";
       pendBtn.style.boxShadow = "none";
     } else {
-      pendBtn.style.background = "#fff";
-      pendBtn.style.color = "#0f172a";
-      pendBtn.style.border = "1px solid #e2e8f0";
+      pendBtn.style.background = "var(--bg-card)";
+      pendBtn.style.color = "var(--text-primary)";
+      pendBtn.style.border = "1px solid var(--border)";
       pendBtn.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
       
-      newBtn.style.background = "#f1f5f9";
-      newBtn.style.color = "#64748b";
+      newBtn.style.background = "var(--bg-hover)";
+      newBtn.style.color = "var(--text-secondary)";
       newBtn.style.border = "none";
       newBtn.style.boxShadow = "none";
     }

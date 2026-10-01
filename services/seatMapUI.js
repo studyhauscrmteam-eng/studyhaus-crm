@@ -43,13 +43,13 @@ export const initSeatMapUI = async (mode, containerId) => {
     container.innerHTML = `
       <div style="padding: 0.5rem 0 0.75rem;">
         <!-- Floor tabs -->
-        <div style="display:inline-flex; gap:0.5rem; background:#f1f5f9; padding:4px; border-radius:999px; margin-bottom:1rem;">
+        <div style="display:inline-flex; gap:0.5rem; background:var(--bg-hover); padding:4px; border-radius:999px; margin-bottom:1rem;">
           <button id="signup-tab-ground" onclick="window._signupSwitchFloor('Ground Floor')"
-            style="border:none; background:#fff; color:#0f172a; padding:5px 14px; border-radius:999px; font-weight:500; font-size:12px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            style="border:none; background:var(--bg-card); color:var(--text-primary); padding:5px 14px; border-radius:999px; font-weight:500; font-size:12px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
             Ground Floor
           </button>
           <button id="signup-tab-first" onclick="window._signupSwitchFloor('First Floor')"
-            style="border:none; background:transparent; color:#475569; padding:5px 14px; border-radius:999px; font-weight:500; font-size:12px; cursor:pointer;">
+            style="border:none; background:transparent; color:var(--text-secondary); padding:5px 14px; border-radius:999px; font-weight:500; font-size:12px; cursor:pointer;">
             First Floor
           </button>
         </div>
@@ -58,11 +58,11 @@ export const initSeatMapUI = async (mode, containerId) => {
           <span style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500;">● Available</span>
           <span style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500;">● Occupied</span>
           <span style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500;">● Reserved</span>
-          <span style="background:#0f172a; color:#fff; border:1px solid #0f172a; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;">✓ Selected</span>
+          <span style="background:var(--primary); color:#fff; border:1px solid var(--primary); padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;">✓ Selected</span>
         </div>
         <!-- Seat grid -->
         <div id="signup-seat-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(70px,1fr)); gap:0.6rem; max-height:450px; overflow-y:auto; padding-right:4px;"></div>
-        <div id="signup-selected-label" style="margin-top:0.6rem; font-size:13px; color:#475569; min-height:20px;"></div>
+        <div id="signup-selected-label" style="margin-top:0.6rem; font-size:13px; color:var(--text-secondary); min-height:20px;"></div>
       </div>
     `;
 
@@ -78,7 +78,7 @@ export const initSeatMapUI = async (mode, containerId) => {
 
       if (floorSeats.length === 0) {
         grid.style.display = "block";
-        grid.innerHTML = `<div style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:13px;">No seats on this floor yet.</div>`;
+        grid.innerHTML = `<div style="text-align:center;padding:1.5rem;color:var(--text-muted);font-size:13px;">No seats on this floor yet.</div>`;
         return;
       }
 
@@ -97,7 +97,7 @@ export const initSeatMapUI = async (mode, containerId) => {
         
         if (!seat) {
           return `
-            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; height: 46px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 13px; cursor: not-allowed; opacity: 0.55; width: 100%;" title="Seat not available">
+            <div style="background:var(--bg-hover); border:1px dashed var(--border-bright); border-radius: 8px; height: 46px; display: flex; align-items: center; justify-content: center; color:var(--text-muted); font-size: 13px; cursor: not-allowed; opacity: 0.55; width: 100%;" title="Seat not available">
               ${seatNumStr}
             </div>
           `;
@@ -106,13 +106,13 @@ export const initSeatMapUI = async (mode, containerId) => {
         const isSelected = seat.id === signupSelectedId;
         const isPickable = seat.status === "Available";
 
-        let bg = "#f8fafc", border = "1px solid #e2e8f0", color = "#0f172a", cursor = "not-allowed", opacity = "0.55";
+        let bg = "var(--bg-hover)", border = "1px solid var(--border)", color = "var(--text-primary)", cursor = "not-allowed", opacity = "0.55";
         if (seat.status === "Available")   { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; color = "#166534"; cursor = "pointer"; opacity = "1"; }
         if (seat.status === "Occupied")    { bg = "#fef2f2"; border = "1px solid #fecaca"; color = "#991b1b"; }
         if (seat.status === "Reserved")    { bg = "#fffbeb"; border = "1px solid #fde68a"; color = "#92400e"; }
         if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; color = "#1e40af"; }
 
-        if (isSelected) { bg = "#0f172a"; border = "2px solid #0f172a"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
+        if (isSelected) { bg = "var(--primary)"; border = "2px solid var(--primary)"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
 
         return `
           <div
@@ -168,13 +168,13 @@ export const initSeatMapUI = async (mode, containerId) => {
           const isSelected = seat.id === signupSelectedId;
           const isPickable = seat.status === "Available";
 
-          let bg = "#f8fafc", border = "1px solid #e2e8f0", color = "#0f172a", cursor = "not-allowed", opacity = "0.55";
+          let bg = "var(--bg-hover)", border = "1px solid var(--border)", color = "var(--text-primary)", cursor = "not-allowed", opacity = "0.55";
           if (seat.status === "Available")   { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; color = "#166534"; cursor = "pointer"; opacity = "1"; }
           if (seat.status === "Occupied")    { bg = "#fef2f2"; border = "1px solid #fecaca"; color = "#991b1b"; }
           if (seat.status === "Reserved")    { bg = "#fffbeb"; border = "1px solid #fde68a"; color = "#92400e"; }
           if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; color = "#1e40af"; }
 
-          if (isSelected) { bg = "#0f172a"; border = "2px solid #0f172a"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
+          if (isSelected) { bg = "var(--primary)"; border = "2px solid var(--primary)"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
 
           return `
             <div
@@ -206,9 +206,9 @@ export const initSeatMapUI = async (mode, containerId) => {
       let html = "";
       if (signupCurrentFloor === "First Floor") {
         html = `
-          <div style="background: #fff; padding: 2rem 1rem 4rem 1rem; border-radius: 12px; position: relative; border: 1px solid #e2e8f0; margin-bottom: 1rem; overflow-x: auto;">
+          <div style="background:var(--bg-card); padding: 2rem 1rem 4rem 1rem; border-radius: 12px; position: relative; border:1px solid var(--border); margin-bottom: 1rem; overflow-x: auto;">
             <!-- Door -->
-            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background: #f1f5f9; border: 1px solid #e2e8f0; border-top: none; padding: 0.25rem 1.5rem; border-radius: 0 0 8px 8px; font-weight: 700; color: #475569; letter-spacing: 1px; font-size: 11px;">
+            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top: none; padding: 0.25rem 1.5rem; border-radius: 0 0 8px 8px; font-weight: 700; color:var(--text-secondary); letter-spacing: 1px; font-size: 11px;">
               DOOR
             </div>
             
@@ -221,10 +221,10 @@ export const initSeatMapUI = async (mode, containerId) => {
 
             <!-- Toilets -->
             <div style="position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; pointer-events: none;">
-              <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color: #475569; letter-spacing: 1px; font-size: 11px;">
+              <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 1px; font-size: 11px;">
                 TOILET-1
               </div>
-              <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color: #475569; letter-spacing: 1px; font-size: 11px;">
+              <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 1px; font-size: 11px;">
                 TOILET-2
               </div>
             </div>
@@ -232,9 +232,9 @@ export const initSeatMapUI = async (mode, containerId) => {
         `;
       } else if (signupCurrentFloor === "Ground Floor") {
         html = `
-          <div style="background: #fff; padding: 2rem 1rem 4rem 1rem; border-radius: 12px; position: relative; border: 1px solid #e2e8f0; overflow-x: auto;">
+          <div style="background:var(--bg-card); padding: 2rem 1rem 4rem 1rem; border-radius: 12px; position: relative; border:1px solid var(--border); overflow-x: auto;">
             <!-- Door -->
-            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background: #f1f5f9; border: 1px solid #e2e8f0; border-top: none; padding: 0.25rem 1.5rem; border-radius: 0 0 8px 8px; font-weight: 700; color: #475569; letter-spacing: 1px; font-size: 11px;">
+            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top: none; padding: 0.25rem 1.5rem; border-radius: 0 0 8px 8px; font-weight: 700; color:var(--text-secondary); letter-spacing: 1px; font-size: 11px;">
               DOOR
             </div>
             
@@ -247,10 +247,10 @@ export const initSeatMapUI = async (mode, containerId) => {
 
             <!-- Toilets -->
             <div style="position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; pointer-events: none;">
-              <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color: #475569; letter-spacing: 1px; font-size: 11px;">
+              <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 1px; font-size: 11px;">
                 TOILET-1
               </div>
-              <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color: #475569; letter-spacing: 1px; font-size: 11px;">
+              <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.25rem 1.5rem; border-radius: 8px 8px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 1px; font-size: 11px;">
                 TOILET-2
               </div>
             </div>
@@ -272,11 +272,11 @@ export const initSeatMapUI = async (mode, containerId) => {
       const fBtn = document.getElementById("signup-tab-first");
       if (gBtn && fBtn) {
         if (floor === "Ground Floor") {
-          gBtn.style.background = "#fff"; gBtn.style.color = "#0f172a"; gBtn.style.boxShadow = "0 1px 2px rgba(0,0,0,0.05)";
-          fBtn.style.background = "transparent"; fBtn.style.color = "#475569"; fBtn.style.boxShadow = "none";
+          gBtn.style.background = "var(--bg-card)"; gBtn.style.color = "var(--text-primary)"; gBtn.style.boxShadow = "0 1px 2px rgba(0,0,0,0.05)";
+          fBtn.style.background = "transparent"; fBtn.style.color = "var(--text-secondary)"; fBtn.style.boxShadow = "none";
         } else {
-          fBtn.style.background = "#fff"; fBtn.style.color = "#0f172a"; fBtn.style.boxShadow = "0 1px 2px rgba(0,0,0,0.05)";
-          gBtn.style.background = "transparent"; gBtn.style.color = "#475569"; gBtn.style.boxShadow = "none";
+          fBtn.style.background = "var(--bg-card)"; fBtn.style.color = "var(--text-primary)"; fBtn.style.boxShadow = "0 1px 2px rgba(0,0,0,0.05)";
+          gBtn.style.background = "transparent"; gBtn.style.color = "var(--text-secondary)"; gBtn.style.boxShadow = "none";
         }
       }
       renderSignupSeats();
@@ -335,20 +335,20 @@ export const initSeatMapUI = async (mode, containerId) => {
           <input type="text" id="seat-assign-input" placeholder="Search student..." style="width:100%; padding:8px 12px; border:1px solid var(--border, #e2e8f0); border-radius:6px;">
           <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:0.5rem;">
             <button id="btn-cancel-assign" class="btn btn-ghost" style="padding:8px 16px; border:1px solid var(--border, #e2e8f0); border-radius:999px; background:transparent;">Cancel</button>
-            <button id="btn-confirm-assign" class="btn btn-primary" style="padding:8px 16px; border:none; border-radius:999px; background:#0f172a; color:#fff;">Assign</button>
+            <button id="btn-confirm-assign" class="btn btn-primary" style="padding:8px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Assign</button>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #e2e8f0; padding-bottom: 1rem; margin-bottom: 1.5rem;">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom: 1rem; margin-bottom: 1.5rem;">
       <div style="display: flex; gap: 1.5rem;">
-        <button id="view-tab-existing" class="view-tab active" style="background:transparent; border:none; border-bottom: 2px solid #0f172a; padding: 0.5rem 0; font-size: 18px; font-weight: 600; color: #0f172a; cursor: pointer;">Seat Map</button>
-        <button id="view-tab-live" class="view-tab" style="background:transparent; border:none; border-bottom: 2px solid transparent; padding: 0.5rem 0; font-size: 18px; font-weight: 600; color: #64748b; cursor: pointer;">Live Seat Map</button>
+        <button id="view-tab-existing" class="view-tab active" style="background:transparent; border:none; border-bottom:2px solid var(--text-primary); padding: 0.5rem 0; font-size: 18px; font-weight: 600; color:var(--text-primary); cursor: pointer;">Seat Map</button>
+        <button id="view-tab-live" class="view-tab" style="background:transparent; border:none; border-bottom: 2px solid transparent; padding: 0.5rem 0; font-size: 18px; font-weight: 600; color:var(--text-secondary); cursor: pointer;">Live Seat Map</button>
       </div>
       <div style="display: flex; gap: 0.75rem;">
-        <button class="btn btn-ghost" id="btn-filter-seats" style="background: #fff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 999px; padding: 6px 16px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg> Filter</button>
-        <button class="btn btn-primary" id="btn-add-seat" style="background: #0f172a; color: #fff; border-radius: 999px; padding: 6px 16px;">+ Add seat</button>
+        <button class="btn btn-ghost" id="btn-filter-seats" style="background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius: 999px; padding: 6px 16px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg> Filter</button>
+        <button class="btn btn-primary" id="btn-add-seat" style="background:var(--primary); color:#fff; border-radius: 999px; padding: 6px 16px;">+ Add seat</button>
       </div>
     </div>
     
@@ -363,18 +363,18 @@ export const initSeatMapUI = async (mode, containerId) => {
       </div>
 
       <!-- Floor Tabs -->
-      <div class="floor-tabs" style="display:inline-flex; gap:0.5rem; background:#f1f5f9; padding:4px; border-radius:999px; margin-bottom:1.5rem;">
-        <button class="floor-tab active" data-floor="Ground Floor" style="border:none; background:#fff; color:#0f172a; padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);" data-i18n="floor.ground">Ground Floor</button>
-        <button class="floor-tab" data-floor="First Floor" style="border:none; background:transparent; color:#475569; padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer;" data-i18n="floor.first">First Floor</button>
+      <div class="floor-tabs" style="display:inline-flex; gap:0.5rem; background:var(--bg-hover); padding:4px; border-radius:999px; margin-bottom:1.5rem;">
+        <button class="floor-tab active" data-floor="Ground Floor" style="border:none; background:var(--bg-card); color:var(--text-primary); padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);" data-i18n="floor.ground">Ground Floor</button>
+        <button class="floor-tab" data-floor="First Floor" style="border:none; background:transparent; color:var(--text-secondary); padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer;" data-i18n="floor.first">First Floor</button>
       </div>
 
       <!-- Main Floor Card -->
-      <div class="card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.5rem; margin-bottom:2rem;">
-        <h3 style="font-size:15px; font-weight:600; color:#0f172a; margin-bottom:4px;" id="current-floor-title" data-i18n="floor.ground">Ground Floor</h3>
-        <p style="font-size:13px; color:#94a3b8; margin-bottom:1.5rem;">Section A · Section B · click a seat for details</p>
+      <div class="card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.5rem; margin-bottom:2rem;">
+        <h3 style="font-size:15px; font-weight:600; color:var(--text-primary); margin-bottom:4px;" id="current-floor-title" data-i18n="floor.ground">Ground Floor</h3>
+        <p style="font-size:13px; color:var(--text-muted); margin-bottom:1.5rem;">Section A · Section B · click a seat for details</p>
         
         <div id="seat-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 1rem;">
-          <div style="text-align:center; grid-column: 1 / -1; padding: 2rem; color: #94a3b8;">Loading live seat map...</div>
+          <div style="text-align:center; grid-column: 1 / -1; padding: 2rem; color:var(--text-muted);">Loading live seat map...</div>
         </div>
       </div>
     </div>
@@ -398,7 +398,7 @@ export const initSeatMapUI = async (mode, containerId) => {
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
               <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-seat-modal').close()" style="padding:8px 16px; border:1px solid var(--border, #e2e8f0); border-radius:999px; background:transparent;">Cancel</button>
-              <button type="submit" class="btn btn-primary" id="btn-save-seat" style="padding:8px 16px; border:none; border-radius:999px; background:#0f172a; color:#fff;">Save Seat</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-seat" style="padding:8px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Save Seat</button>
             </div>
           </form>
         </div>
@@ -434,7 +434,7 @@ export const initSeatMapUI = async (mode, containerId) => {
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
               <button type="button" class="btn btn-ghost" onclick="window.clearSeatFilters()" style="padding:8px 16px; border:1px solid var(--border, #e2e8f0); border-radius:999px; background:transparent;">Clear Filters</button>
-              <button type="submit" class="btn btn-primary" style="padding:8px 16px; border:none; border-radius:999px; background:#0f172a; color:#fff;">Apply</button>
+              <button type="submit" class="btn btn-primary" style="padding:8px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Apply</button>
             </div>
           </form>
         </div>
@@ -453,12 +453,12 @@ export const initSeatMapUI = async (mode, containerId) => {
   if (tabExisting && tabLive) {
     tabExisting.addEventListener("click", () => {
       tabExisting.classList.add("active");
-      tabExisting.style.borderBottomColor = "#0f172a";
-      tabExisting.style.color = "#0f172a";
+      tabExisting.style.borderBottomColor = "var(--text-primary)";
+      tabExisting.style.color = "var(--text-primary)";
       
       tabLive.classList.remove("active");
       tabLive.style.borderBottomColor = "transparent";
-      tabLive.style.color = "#64748b";
+      tabLive.style.color = "var(--text-secondary)";
 
       viewExisting.style.display = "block";
       viewLive.style.display = "none";
@@ -467,12 +467,12 @@ export const initSeatMapUI = async (mode, containerId) => {
 
     tabLive.addEventListener("click", () => {
       tabLive.classList.add("active");
-      tabLive.style.borderBottomColor = "#0f172a";
-      tabLive.style.color = "#0f172a";
+      tabLive.style.borderBottomColor = "var(--text-primary)";
+      tabLive.style.color = "var(--text-primary)";
       
       tabExisting.classList.remove("active");
       tabExisting.style.borderBottomColor = "transparent";
-      tabExisting.style.color = "#64748b";
+      tabExisting.style.color = "var(--text-secondary)";
 
       viewExisting.style.display = "none";
       viewLive.style.display = "block";
@@ -490,12 +490,12 @@ export const initSeatMapUI = async (mode, containerId) => {
     btn.addEventListener("click", (e) => {
       document.querySelectorAll(".floor-tab").forEach(b => {
         b.style.background = 'transparent';
-        b.style.color = '#475569';
+        b.style.color = "var(--text-secondary)";
         b.style.boxShadow = 'none';
       });
       const target = e.target;
-      target.style.background = '#fff';
-      target.style.color = '#0f172a';
+      target.style.background = "var(--bg-card)";
+      target.style.color = "var(--text-primary)";
       target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
       
       currentFilters.floor = target.getAttribute("data-floor");
@@ -570,15 +570,15 @@ export const initSeatMapUI = async (mode, containerId) => {
   if (!document.getElementById("seat-action-modal")) {
     const modalHtml = `
       <div id="seat-action-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
-        <div style="background:#fff; width:360px; border-radius:12px; padding:1.5rem; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
+        <div style="background:var(--bg-card); width:360px; border-radius:12px; padding:1.5rem; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-            <h3 id="seat-modal-title" style="margin:0; font-size:18px; color:#0f172a;">Seat Action</h3>
-            <button id="btn-close-seat-modal" style="background:none; border:none; font-size:20px; cursor:pointer; color:#64748b;">&times;</button>
+            <h3 id="seat-modal-title" style="margin:0; font-size:18px; color:var(--text-primary);">Seat Action</h3>
+            <button id="btn-close-seat-modal" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-secondary);">&times;</button>
           </div>
           <div id="seat-modal-options" style="display:flex; flex-direction:column; gap:0.75rem;"></div>
           <div id="seat-modal-assign-form" style="display:none; flex-direction:column; gap:0.75rem;">
-            <label style="font-size:13px; font-weight:600; color:#475569;">Student Email / ID / Name</label>
-            <input type="text" id="seat-assign-input" placeholder="Enter details..." style="padding:10px; border:1px solid #e2e8f0; border-radius:8px;" />
+            <label style="font-size:13px; font-weight:600; color:var(--text-secondary);">Student Email / ID / Name</label>
+            <input type="text" id="seat-assign-input" placeholder="Enter details..." style="padding:10px; border:1px solid var(--border); border-radius:8px;" />
             <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
               <button id="btn-cancel-assign" class="btn btn-ghost">Cancel</button>
               <button id="btn-confirm-assign" class="btn btn-primary">Assign</button>
@@ -640,14 +640,14 @@ export const initSeatMapUI = async (mode, containerId) => {
       btn.innerText = text;
       btn.style.padding = "10px";
       btn.style.borderRadius = "8px";
-      btn.style.border = "1px solid #e2e8f0";
-      btn.style.background = "#f8fafc";
+      btn.style.border = "1px solid var(--border)";
+      btn.style.background = "var(--bg-hover)";
       btn.style.cursor = "pointer";
       btn.style.fontWeight = "500";
       btn.style.textAlign = "left";
-      btn.style.color = "#0f172a";
-      btn.onmouseover = () => btn.style.background = "#f1f5f9";
-      btn.onmouseout = () => btn.style.background = "#f8fafc";
+      btn.style.color = "var(--text-primary)";
+      btn.onmouseover = () => btn.style.background = "var(--bg-hover)";
+      btn.onmouseout = () => btn.style.background = "var(--bg-hover)";
       btn.onclick = () => {
         if (onClick) onClick();
       };
@@ -677,7 +677,7 @@ export const initSeatMapUI = async (mode, containerId) => {
       const p = document.createElement("p");
       p.innerText = "Occupied seats cannot be modified directly until the student checks out.";
       p.style.fontSize = "13px";
-      p.style.color = "#475569";
+      p.style.color = "var(--text-secondary)";
       optionsDiv.appendChild(p);
     }
 
@@ -800,9 +800,9 @@ const updateSeatAnalysis = (seats) => {
         return `
           <div class="seat-card empty-seat" 
                onclick="window.quickCreateSeat('${seatNumStr}', '${currentFilters.floor}')"
-               style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; height: 50px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 14px; cursor: pointer; transition: 0.2s;"
-               onmouseover="this.style.background='#f1f5f9';"
-               onmouseout="this.style.background='#f8fafc';"
+               style="background:var(--bg-hover); border:1px dashed var(--border-bright); border-radius: 8px; height: 50px; display: flex; align-items: center; justify-content: center; color:var(--text-muted); font-size: 14px; cursor: pointer; transition: 0.2s;"
+               onmouseover="this.style.background='var(--bg-hover)';"
+               onmouseout="this.style.background='var(--bg-hover)';"
                title="Click to create seat ${seatNumStr} in database"
                >
             ${seatNumStr}
@@ -819,12 +819,12 @@ const updateSeatAnalysis = (seats) => {
         if (!sn.includes(q) && !asn.includes(q)) isFilteredOut = true;
       }
 
-      let bg = "#f8fafc", border = "1px solid #e2e8f0", text = "#0f172a";
+      let bg = "var(--bg-hover)", border = "1px solid var(--border)", text = "var(--text-primary)";
       if (seat.status === "Available") { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; text = "#166534"; }
       else if (seat.status === "Occupied") { bg = "#fef2f2"; border = "1px solid #fecaca"; text = "#991b1b"; }
       else if (seat.status === "Reserved") { bg = "#fffbeb"; border = "1px solid #fde68a"; text = "#92400e"; }
       else if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; text = "#1e40af"; }
-      else if (seat.status === "Inactive") { bg = "#f1f5f9"; border = "1px dashed #cbd5e1"; text = "#94a3b8"; }
+      else if (seat.status === "Inactive") { bg = "var(--bg-hover)"; border = "1px dashed var(--border-bright)"; text = "var(--text-muted)"; }
 
       return `
         <div 
@@ -899,9 +899,9 @@ const updateSeatAnalysis = (seats) => {
 
     if (currentFilters.floor === "First Floor") {
       html = `
-        <div style="background: #fff; padding: 3rem 2rem 4rem 2rem; border-radius: 12px; position: relative; border: 1px solid #e2e8f0;">
+        <div style="background:var(--bg-card); padding: 3rem 2rem 4rem 2rem; border-radius: 12px; position: relative; border:1px solid var(--border);">
           <!-- Door -->
-          <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background: #f1f5f9; border: 1px solid #e2e8f0; border-top: none; padding: 0.5rem 2.5rem; border-radius: 0 0 12px 12px; font-weight: 700; color: #475569; letter-spacing: 2px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top: none; padding: 0.5rem 2.5rem; border-radius: 0 0 12px 12px; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
             DOOR
           </div>
           
@@ -914,10 +914,10 @@ const updateSeatAnalysis = (seats) => {
 
           <!-- Toilets -->
           <div style="position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; pointer-events: none;">
-            <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color: #475569; letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
+            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
               TOILET-1
             </div>
-            <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color: #475569; letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
+            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
               TOILET-2
             </div>
           </div>
@@ -925,9 +925,9 @@ const updateSeatAnalysis = (seats) => {
       `;
     } else if (currentFilters.floor === "Ground Floor") {
       html = `
-        <div style="background: #fff; padding: 3rem 2rem 4rem 2rem; border-radius: 12px; position: relative; border: 1px solid #e2e8f0;">
+        <div style="background:var(--bg-card); padding: 3rem 2rem 4rem 2rem; border-radius: 12px; position: relative; border:1px solid var(--border);">
           <!-- Door -->
-          <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background: #f1f5f9; border: 1px solid #e2e8f0; border-top: none; padding: 0.5rem 2.5rem; border-radius: 0 0 12px 12px; font-weight: 700; color: #475569; letter-spacing: 2px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top: none; padding: 0.5rem 2.5rem; border-radius: 0 0 12px 12px; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
             DOOR
           </div>
           
@@ -940,10 +940,10 @@ const updateSeatAnalysis = (seats) => {
 
           <!-- Toilets -->
           <div style="position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; pointer-events: none;">
-            <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color: #475569; letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
+            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
               TOILET-1
             </div>
-            <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color: #475569; letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
+            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
               TOILET-2
             </div>
           </div>

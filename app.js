@@ -1,15 +1,3 @@
-// ==================== STATUS TOGGLE (Open / Closed) ====================
-function toggleStatus() {
-  const btn = document.getElementById('status-toggle');
-  const text = btn.querySelector('.status-text');
-  const isOpen = btn.classList.contains('open');
-
-  btn.classList.toggle('open', !isOpen);
-  btn.classList.toggle('closed', isOpen);
-  text.textContent = isOpen ? 'Closed' : 'Open';
-  showToast(isOpen ? 'Space marked as Closed' : 'Space marked as Open', isOpen ? 'warning' : 'success');
-}
-
 // ==================== DARK / LIGHT THEME TOGGLE ====================
 function toggleTheme() {
   const isLight = document.body.classList.toggle('light-mode');
@@ -370,6 +358,7 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') {
     const search = document.querySelector('.topbar-search input');
     search?.blur();
+    document.getElementById('lang-dropdown')?.classList.remove('open');
     if (window.innerWidth <= 768) {
       document.getElementById('sidebar').classList.remove('mobile-open');
     }
@@ -546,10 +535,46 @@ window.__downloadDoc = async (index) => {
 };
 
 
+// ==================== LANGUAGE DROPDOWN (custom menu) ====================
+function toggleLangMenu(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('lang-dropdown')?.classList.toggle('open');
+}
+
+function syncLangUI() {
+  const lang = (localStorage.getItem('appLanguage') || 'en').toLowerCase();
+  const label = document.getElementById('lang-current');
+  if (label) label.textContent = lang === 'gu' ? 'GU' : 'EN';
+  document.querySelectorAll('.lang-item').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-lang') === lang);
+  });
+}
+
+async function selectLanguage(lang) {
+  try {
+    const prefix = window.location.pathname.match(/\/(admin|employee|manager|student)\//) ? '../' : './';
+    const m = await import(prefix + 'services/translationService.js');
+    await m.setLanguage(lang);
+  } catch (err) {
+    console.error('Language switch failed:', err);
+  }
+  syncLangUI();
+  document.getElementById('lang-dropdown')?.classList.remove('open');
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest?.('.lang-dropdown')) {
+    document.getElementById('lang-dropdown')?.classList.remove('open');
+  }
+});
+
+window.addEventListener('languageChanged', syncLangUI);
+
 // ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', () => {
   const defaultPage = document.body.getAttribute('data-default-page') || 'dashboard';
   navigate(defaultPage);
+  syncLangUI();
   // Stagger metric cards animation
   document.querySelectorAll('.metric-card').forEach((card, i) => {
     card.style.opacity = '0';

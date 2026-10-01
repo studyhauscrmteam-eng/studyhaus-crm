@@ -540,7 +540,7 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
           </div>
           <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:1.5rem;">
             <button type="button" class="btn btn-ghost" onclick="window.__closeSelfieCamera()" style="flex:1; padding:10px 16px; border:1px solid var(--border,#e2e8f0); border-radius:999px; background:transparent;">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="window.__captureSelfie()" style="flex:1; padding:10px 16px; border:none; border-radius:999px; background:#0f172a; color:#fff;">Capture Selfie</button>
+            <button type="button" class="btn btn-primary" onclick="window.__captureSelfie()" style="flex:1; padding:10px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Capture Selfie</button>
           </div>
         </div>
       </dialog>

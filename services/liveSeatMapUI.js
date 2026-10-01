@@ -96,9 +96,9 @@ export const initLiveSeatMapInTab = (containerId) => {
         <p class="page-subtitle" id="live-subtitle">Real-time occupancy and attendance.</p>
       </div>
       <div style="display:flex; align-items:center; gap:0.75rem;">
-        <div style="background:#f1f5f9; padding:4px 14px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; border:1px solid #e2e8f0;">
+        <div style="background:var(--bg-hover); padding:4px 14px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border);">
           <span style="width:8px; height:8px; background:#ef4444; border-radius:50%; animation:pulse 1.5s infinite;"></span>
-          <span style="font-size:13px; font-weight:600; color:#475569;" data-i18n="liveSeat.liveActive">Live Updates Active</span>
+          <span style="font-size:13px; font-weight:600; color:var(--text-secondary);" data-i18n="liveSeat.liveActive">Live Updates Active</span>
         </div>
       </div>
     </div>
@@ -116,23 +116,23 @@ export const initLiveSeatMapInTab = (containerId) => {
     </div>
 
     <!-- Floor Tabs — identical markup to regular Seat Map -->
-    <div class="floor-tabs" style="display:inline-flex; gap:0.5rem; background:#f1f5f9; padding:4px; border-radius:999px; margin-bottom:1.5rem;">
+    <div class="floor-tabs" style="display:inline-flex; gap:0.5rem; background:var(--bg-hover); padding:4px; border-radius:999px; margin-bottom:1.5rem;">
       <button class="live-floor-tab active" data-floor="Ground Floor" data-i18n="floor.ground"
-        style="border:none; background:#fff; color:#0f172a; padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+        style="border:none; background:var(--bg-card); color:var(--text-primary); padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
         Ground Floor
       </button>
       <button class="live-floor-tab" data-floor="First Floor" data-i18n="floor.first"
-        style="border:none; background:transparent; color:#475569; padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer;">
+        style="border:none; background:transparent; color:var(--text-secondary); padding:6px 16px; border-radius:999px; font-weight:500; font-size:13px; cursor:pointer;">
         First Floor
       </button>
     </div>
 
     <!-- Main Floor Card — identical structure to regular Seat Map -->
-    <div class="card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.5rem; margin-bottom:2rem; overflow-x:auto;">
-      <h3 style="font-size:15px; font-weight:600; color:#0f172a; margin-bottom:4px;" id="live-floor-title" data-i18n="floor.ground">Ground Floor</h3>
-      <p style="font-size:13px; color:#94a3b8; margin-bottom:1.5rem;">Section A · Section B · hover a seat to see who is present</p>
+    <div class="card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.5rem; margin-bottom:2rem; overflow-x:auto;">
+      <h3 style="font-size:15px; font-weight:600; color:var(--text-primary); margin-bottom:4px;" id="live-floor-title" data-i18n="floor.ground">Ground Floor</h3>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:1.5rem;">Section A · Section B · hover a seat to see who is present</p>
       <div id="live-seat-grid">
-        <div style="text-align:center; padding:3rem; color:#94a3b8;">Connecting to live stream...</div>
+        <div style="text-align:center; padding:3rem; color:var(--text-muted);">Connecting to live stream...</div>
       </div>
     </div>
   `;
@@ -144,12 +144,12 @@ export const initLiveSeatMapInTab = (containerId) => {
     btn.addEventListener("click", (e) => {
       document.querySelectorAll(".live-floor-tab").forEach(b => {
         b.style.background = 'transparent';
-        b.style.color = '#475569';
+        b.style.color = "var(--text-secondary)";
         b.style.boxShadow = 'none';
       });
       const target = e.currentTarget;
-      target.style.background = '#fff';
-      target.style.color = '#0f172a';
+      target.style.background = "var(--bg-card)";
+      target.style.color = "var(--text-primary)";
       target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
       currentFloor = target.getAttribute("data-floor");
 
@@ -220,7 +220,7 @@ const renderLiveMap = () => {
 
     if (!seatExists) {
       return `
-        <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:10px; height:70px; display:grid; place-items:center; color:#94a3b8; font-size:13px;">
+        <div style="background:var(--bg-hover); border:1px dashed #cbd5e1; border-radius:10px; height:70px; display:grid; place-items:center; color:var(--text-muted); font-size:13px;">
           ${seatNumStr}
         </div>
       `;
@@ -338,8 +338,8 @@ const renderLiveMap = () => {
 
   if (currentFloor === 'First Floor') {
     html = `
-      <div style="background:#fff; padding:2rem 1rem 4rem 1rem; border-radius:12px; position:relative; border:1px solid #e2e8f0; min-width:800px; overflow-x:auto;">
-        <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); background:#f1f5f9; border:1px solid #e2e8f0; border-top:none; padding:0.25rem 1.5rem; border-radius:0 0 8px 8px; font-weight:700; color:#475569; letter-spacing:1px; font-size:11px;">DOOR</div>
+      <div style="background:var(--bg-card); padding:2rem 1rem 4rem 1rem; border-radius:12px; position:relative; border:1px solid var(--border); min-width:800px; overflow-x:auto;">
+        <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top:none; padding:0.25rem 1.5rem; border-radius:0 0 8px 8px; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">DOOR</div>
         <div style="display:flex; gap:1.5rem; justify-content:center; max-width:800px; margin:0 auto; align-items:flex-start;">
           ${renderCustomColHtml(firstCol1)}
           ${renderCustomColHtml(firstCol2)}
@@ -347,15 +347,15 @@ const renderLiveMap = () => {
           ${renderCustomColHtml(firstCol4)}
         </div>
         <div style="position:absolute; bottom:0; left:0; right:0; display:flex; justify-content:space-around; pointer-events:none;">
-          <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:#475569; letter-spacing:1px; font-size:11px;">TOILET-1</div>
-          <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:#475569; letter-spacing:1px; font-size:11px;">TOILET-2</div>
+          <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">TOILET-1</div>
+          <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">TOILET-2</div>
         </div>
       </div>
     `;
   } else {
     html = `
-      <div style="background:#fff; padding:2rem 1rem 4rem 1rem; border-radius:12px; position:relative; border:1px solid #e2e8f0; min-width:900px; overflow-x:auto;">
-        <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); background:#f1f5f9; border:1px solid #e2e8f0; border-top:none; padding:0.25rem 1.5rem; border-radius:0 0 8px 8px; font-weight:700; color:#475569; letter-spacing:1px; font-size:11px;">DOOR</div>
+      <div style="background:var(--bg-card); padding:2rem 1rem 4rem 1rem; border-radius:12px; position:relative; border:1px solid var(--border); min-width:900px; overflow-x:auto;">
+        <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top:none; padding:0.25rem 1.5rem; border-radius:0 0 8px 8px; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">DOOR</div>
         <div style="display:flex; gap:1.5rem; justify-content:center; max-width:900px; margin:0 auto; align-items:flex-start;">
           ${renderCustomColHtml(groundCol1)}
           ${renderCustomColHtml(groundCol2)}
@@ -363,8 +363,8 @@ const renderLiveMap = () => {
           ${renderCustomColHtml(groundCol4)}
         </div>
         <div style="position:absolute; bottom:0; left:0; right:0; display:flex; justify-content:space-around; pointer-events:none;">
-          <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:#475569; letter-spacing:1px; font-size:11px;">TOILET-1</div>
-          <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:#475569; letter-spacing:1px; font-size:11px;">TOILET-2</div>
+          <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">TOILET-1</div>
+          <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">TOILET-2</div>
         </div>
       </div>
     `;

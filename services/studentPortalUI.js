@@ -453,7 +453,7 @@ const renderPortal = () => {
         </div>
       </div>
       <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
-        <div class="card" style="flex: 1; padding: 2rem; border-radius: 12px; background: #fff; border: 1px solid #e2e8f0;">
+        <div class="card" style="flex: 1; padding: 2rem; border-radius: 12px; background:var(--bg-card); border:1px solid var(--border);">
           <form id="admission-form" onsubmit="event.preventDefault(); window.showPaymentModal(); return false;">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
               <div class="form-group" style="margin:0;"><label style="font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px;">Full name <span style="color:#e53e3e;">*</span></label><input type="text" id="adm-name" required style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);" value="${sessionStorage.getItem('pendingName') || s.name || ''}" /></div>
@@ -487,10 +487,10 @@ const renderPortal = () => {
           </form>
         </div>
         <div style="width: 280px; position: sticky; top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
-          <div class="card" style="padding: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: none;">
-            <h4 style="font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 1rem;">SUMMARY</h4>
-            <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 12px;"><span>Plan</span><span id="summary-plan" style="color: #0f172a; font-weight: 600;">—</span></div>
-            <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 12px;"><span>Amount</span><span id="summary-amount" style="color: #0f172a; font-weight: 600;">—</span></div>
+          <div class="card" style="padding: 1.5rem; background:var(--bg-hover); border:1px solid var(--border); border-radius: 12px; box-shadow: none;">
+            <h4 style="font-size: 11px; font-weight: 700; color:var(--text-muted); letter-spacing: 0.5px; margin-bottom: 1rem;">SUMMARY</h4>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary); margin-bottom: 12px;"><span>Plan</span><span id="summary-plan" style="color:var(--text-primary); font-weight: 600;">—</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary); margin-bottom: 12px;"><span>Amount</span><span id="summary-amount" style="color:var(--text-primary); font-weight: 600;">—</span></div>
             <div style="height: 1px; background: #e2e8f0; margin: 12px 0;"></div>
             <button class="btn btn-primary" id="btn-submit-admission" onclick="document.getElementById('admission-form').requestSubmit()" style="width: 100%; padding: 12px; font-size: 14px;">Confirm Admission</button>
           </div>
@@ -756,10 +756,10 @@ const renderPortal = () => {
         </div>
       </div>
       <div style="display: flex; justify-content: center;">
-        <div class="card" style="padding: 2rem; max-width: 500px; text-align: center; border-radius: 12px; background: #fff; border: 1px solid #e2e8f0;">
+        <div class="card" style="padding: 2rem; max-width: 500px; text-align: center; border-radius: 12px; background:var(--bg-card); border:1px solid var(--border);">
            <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
-           <h3 style="margin-bottom: 1rem; color: #0f172a;">What's next?</h3>
-           <ul style="text-align: left; color: #475569; font-size: 0.95rem; line-height: 1.5; padding-left: 1.5rem;">
+           <h3 style="margin-bottom: 1rem; color:var(--text-primary);">What's next?</h3>
+           <ul style="text-align: left; color:var(--text-secondary); font-size: 0.95rem; line-height: 1.5; padding-left: 1.5rem;">
              <li>The admin will verify your details and payment.</li>
              <li>Once approved, you will get access to the portal.</li>
              <li>If you chose "Pay Later", please visit the desk, or pay online below.</li>
@@ -1118,7 +1118,7 @@ const renderPortal = () => {
               </div>
 
               <!-- Subscription Status -->
-              <div style="background: #f1f5f9; border: 1px solid ${_monthsOwed > 0 ? '#fca5a5' : '#e2e8f0'}; border-radius: 12px; padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+              <div style="background:var(--bg-hover); border: 1px solid ${_monthsOwed > 0 ? '#fca5a5' : '#e2e8f0'}; border-radius: 12px; padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
                 <svg viewBox="0 0 24 24" width="24" height="24" stroke="${_monthsOwed > 0 ? '#dc2626' : '#64748b'}" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                 <div>
                   <div style="font-size: 0.75rem; font-weight: 600; color: ${_monthsOwed > 0 ? '#dc2626' : '#64748b'}; text-transform: uppercase;">Current Subscription Ends</div>
@@ -1167,16 +1167,16 @@ const renderPortal = () => {
                 </div>
                 `}
                 <div class="form-group">
-                  <label style="font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase;">Amount (₹)</label>
+                  <label style="font-size: 0.75rem; font-weight: 600; color:var(--text-secondary); text-transform: uppercase;">Amount (₹)</label>
                   <div id="payment-amount-display" style="font-size: 1.25rem; font-weight: 700; color: #334155; padding: 6px 0;">₹--</div>
                   <input type="hidden" id="payment-amount" value="0" />
                 </div>
                 <div class="form-group full-width">
-                  <label style="font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase;">UPI Transaction ID *</label>
+                  <label style="font-size: 0.75rem; font-weight: 600; color:var(--text-secondary); text-transform: uppercase;">UPI Transaction ID *</label>
                   <input type="text" id="payment-txnid" required style="width:100%; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; outline:none;" placeholder="Enter your 12-digit UPI Txn ID" />
                 </div>
                 <div class="form-group full-width" style="display:flex; gap: 1rem; margin-top: 1rem;">
-                  <button type="button" class="btn btn-ghost" style="flex: 1; background: #f1f5f9; color: #475569;" onclick="document.getElementById('payment-txnid').value=''">✕ Cancel</button>
+                  <button type="button" class="btn btn-ghost" style="flex: 1; background:var(--bg-hover); color:var(--text-secondary);" onclick="document.getElementById('payment-txnid').value=''">✕ Cancel</button>
                   <button type="submit" id="btn-submit-payment" class="btn btn-primary" style="flex: 2; background: #22c55e; border-color: #22c55e; color: #fff;">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                     ${_monthsOwed > 0 ? `Pay for ${_nextMonthLabel}` : 'Submit Renewal Request'}
@@ -1186,12 +1186,12 @@ const renderPortal = () => {
             </div>
 
             <!-- RIGHT SIDE: QR Code -->
-            <div style="width: 220px; display:flex; flex-direction: column; align-items:center; gap: 1rem; padding: 1.5rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px dashed #cbd5e1;">
-              <h4 style="margin:0; font-size: 0.9rem; color: #475569; text-align:center;">Scan to Pay</h4>
-              <div style="width: 160px; height: 160px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; display:flex; align-items:center; justify-content:center; overflow: hidden;">
+            <div style="width: 220px; display:flex; flex-direction: column; align-items:center; gap: 1rem; padding: 1.5rem 1rem; background:var(--bg-hover); border-radius: 12px; border: 1px dashed #cbd5e1;">
+              <h4 style="margin:0; font-size: 0.9rem; color:var(--text-secondary); text-align:center;">Scan to Pay</h4>
+              <div style="width: 160px; height: 160px; background:var(--bg-card); border:1px solid var(--border); border-radius: 8px; display:flex; align-items:center; justify-content:center; overflow: hidden;">
                 <img src="/payment-qr.jpeg" class="payment-qr-img" alt="Scan to Pay" style="width: 100%; height: 100%; object-fit: contain;" onerror="this.onerror=null; this.src='https://via.placeholder.com/160?text=QR+Code';" />
               </div>
-              <p style="font-size: 0.75rem; color: #64748b; text-align: center; margin: 0; line-height: 1.4;">Pay using GPay, PhonePe, or Paytm and enter the Txn ID here.</p>
+              <p style="font-size: 0.75rem; color:var(--text-secondary); text-align: center; margin: 0; line-height: 1.4;">Pay using GPay, PhonePe, or Paytm and enter the Txn ID here.</p>
             </div>
 
           </div>

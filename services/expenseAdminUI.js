@@ -305,11 +305,11 @@ const renderExpenses = () => {
     const expDate = r.expenseDate || r.date;
 
     html += `
-      <tr style="border-bottom:1px solid #f1f5f9;">
-        <td style="padding:16px; font-weight:600; color:#0f172a;">${catName}</td>
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:16px; font-weight:600; color:var(--text-primary);">${catName}</td>
         <td style="padding:16px;">${r.vendor || expName}</td>
         <td style="padding:16px;">${r.id.substring(0,6).toUpperCase()}</td>
-        <td style="padding:16px; font-weight:600; color:#0f172a; text-align:right;">₹${r.amount}</td>
+        <td style="padding:16px; font-weight:600; color:var(--text-primary); text-align:right;">₹${r.amount}</td>
         <td style="padding:16px;">${expDate ? new Date(expDate).toISOString().split('T')[0] : "-"}</td>
         <td style="padding:16px; text-align:right;">
           <span style="${statusStyle} padding:4px 12px; border-radius:999px; font-size:11px; font-weight:600;">${statusText}</span>

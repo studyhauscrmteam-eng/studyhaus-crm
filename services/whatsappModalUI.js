@@ -85,7 +85,7 @@ const injectModal = () => {
   
   const modalHtml = `
     <div id="wa-modal" class="modal-overlay" style="display:none; z-index:1000; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center;">
-      <div class="modal-content" style="background:#fff; border-radius:8px; width:400px; padding:2rem;">
+      <div class="modal-content" style="background:var(--bg-card); border-radius:8px; width:400px; padding:2rem;">
         <h2>Send WhatsApp Message</h2>
         <div style="margin-top:1rem;">
           <label style="display:block; margin-bottom:0.5rem; font-size:0.875rem;">Select Template</label>

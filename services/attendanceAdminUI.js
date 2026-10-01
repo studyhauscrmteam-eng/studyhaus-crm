@@ -27,40 +27,40 @@ export const initAttendanceAdminUI = () => {
         <button class="btn btn-secondary" onclick="window.handleAttendanceExport('csv')" id="btn-export-att-csv">Export CSV</button>
         <button class="btn btn-secondary" onclick="window.handleAttendanceExport('excel')" id="btn-export-att-excel">Export Excel</button>
         <button class="btn btn-primary" onclick="window.handleAttendanceExport('pdf')" id="btn-export-att-pdf">Export PDF</button>
-        <button class="btn btn-primary" id="btn-scan-qr" style="background:#0f172a; color:#fff; border:none; border-radius:999px; padding:8px 16px; font-weight:500; font-size:13px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(15,23,42,0.1);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h4v4H4z"/><path d="M4 16h4v4H4z"/><path d="M16 4h4v4h-4z"/><path d="M14 14h2v2h-2z"/><path d="M18 18h2v2h-2z"/><path d="M14 18h2v2h-2z"/><path d="M18 14h2v2h-2z"/></svg> Scan QR</button>
+        <button class="btn btn-primary" id="btn-scan-qr" style="background:var(--primary); color:#fff; border:none; border-radius:999px; padding:8px 16px; font-weight:500; font-size:13px; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 4px rgba(15,23,42,0.1);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h4v4H4z"/><path d="M4 16h4v4H4z"/><path d="M16 4h4v4h-4z"/><path d="M14 14h2v2h-2z"/><path d="M18 18h2v2h-2z"/><path d="M14 18h2v2h-2z"/><path d="M18 14h2v2h-2z"/></svg> Scan QR</button>
       </div>
     </div>
     
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
-      <div class="card" style="padding:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:12px; display:flex; justify-content:space-between; align-items:flex-start; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
-        <div><div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:#64748b; margin-bottom:8px; text-transform:uppercase;">Present Currently</div><div style="font-size:24px; font-weight:700; color:#0f172a;" id="att-metric-present">0</div></div>
+      <div class="card" style="padding:1.5rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:flex-start; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
+        <div><div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase;">Present Currently</div><div style="font-size:24px; font-weight:700; color:var(--text-primary);" id="att-metric-present">0</div></div>
         <div style="width:32px; height:32px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:8px; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
       </div>
-      <div class="card" style="padding:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:12px; display:flex; justify-content:space-between; align-items:flex-start; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
-        <div><div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:#64748b; margin-bottom:8px; text-transform:uppercase;">Completed Today</div><div style="font-size:24px; font-weight:700; color:#0f172a;" id="att-metric-absent">0</div></div>
-        <div style="width:32px; height:32px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; border-radius:8px; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><path d="M9 12h6"/></svg></div>
+      <div class="card" style="padding:1.5rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; display:flex; justify-content:space-between; align-items:flex-start; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
+        <div><div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase;">Completed Today</div><div style="font-size:24px; font-weight:700; color:var(--text-primary);" id="att-metric-absent">0</div></div>
+        <div style="width:32px; height:32px; background:var(--bg-hover); color:var(--text-secondary); border:1px solid #cbd5e1; border-radius:8px; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/><path d="M9 12h6"/></svg></div>
       </div>
-      <div class="card" style="padding:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
-        <div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:#64748b; margin-bottom:8px; text-transform:uppercase;">Total Check-Ins Today</div><div style="font-size:24px; font-weight:700; color:#0f172a;" id="att-metric-late">0</div>
+      <div class="card" style="padding:1.5rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
+        <div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase;">Total Check-Ins Today</div><div style="font-size:24px; font-weight:700; color:var(--text-primary);" id="att-metric-late">0</div>
       </div>
-      <div class="card" style="padding:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
-        <div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:#64748b; margin-bottom:8px; text-transform:uppercase;">Avg Hours (All Time)</div><div style="font-size:24px; font-weight:700; color:#0f172a;" id="att-metric-avg">0h</div>
+      <div class="card" style="padding:1.5rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
+        <div style="font-size:11px; font-weight:700; letter-spacing:0.5px; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase;">Avg Hours (All Time)</div><div style="font-size:24px; font-weight:700; color:var(--text-primary);" id="att-metric-avg">0h</div>
       </div>
     </div>
 
     <!-- Chart Card -->
-    <div class="card" style="padding:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:1.5rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
-      <h3 style="font-size:15px; font-weight:600; color:#0f172a; margin-bottom:4px;">Attendance trend</h3>
-      <p style="font-size:13px; color:#94a3b8; margin-bottom:2rem;">Last 14 days</p>
+    <div class="card" style="padding:1.5rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; margin-bottom:1.5rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
+      <h3 style="font-size:15px; font-weight:600; color:var(--text-primary); margin-bottom:4px;">Attendance trend</h3>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:2rem;">Last 14 days</p>
       
       <div style="position:relative; height:200px;">
         <!-- Y-Axis Lines -->
-        <div style="position:absolute; top:0; left:20px; right:0; height:100%; display:flex; flex-direction:column; justify-content:space-between; border-left: 1px solid #e2e8f0;">
-          <div style="border-top:1px dashed #e2e8f0; position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:#94a3b8;">40</span></div>
-          <div style="border-top:1px dashed #e2e8f0; position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:#94a3b8;">30</span></div>
-          <div style="border-top:1px dashed #e2e8f0; position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:#94a3b8;">20</span></div>
-          <div style="border-top:1px dashed #e2e8f0; position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:#94a3b8;">10</span></div>
-          <div style="border-top:1px solid #e2e8f0; position:relative;"><span style="position:absolute; left:-15px; top:-8px; font-size:11px; color:#94a3b8;">0</span></div>
+        <div style="position:absolute; top:0; left:20px; right:0; height:100%; display:flex; flex-direction:column; justify-content:space-between; border-left:1px solid var(--border);">
+          <div style="border-top:1px dashed var(--border); position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:var(--text-muted);">40</span></div>
+          <div style="border-top:1px dashed var(--border); position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:var(--text-muted);">30</span></div>
+          <div style="border-top:1px dashed var(--border); position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:var(--text-muted);">20</span></div>
+          <div style="border-top:1px dashed var(--border); position:relative;"><span style="position:absolute; left:-20px; top:-8px; font-size:11px; color:var(--text-muted);">10</span></div>
+          <div style="border-top:1px solid var(--border); position:relative;"><span style="position:absolute; left:-15px; top:-8px; font-size:11px; color:var(--text-muted);">0</span></div>
         </div>
         
         <!-- Bars Container -->
@@ -71,13 +71,13 @@ export const initAttendanceAdminUI = () => {
     </div>
 
     <!-- Table Card -->
-    <div class="card" style="padding:1.5rem; background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
-      <h3 style="font-size:15px; font-weight:600; color:#0f172a; margin-bottom:1.5rem;">Today's check-ins</h3>
+    <div class="card" style="padding:1.5rem; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02);">
+      <h3 style="font-size:15px; font-weight:600; color:var(--text-primary); margin-bottom:1.5rem;">Today's check-ins</h3>
       
       <div style="overflow-x:auto;">
-        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px; color:#0f172a;">
+        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px; color:var(--text-primary);">
           <thead>
-            <tr style="color:#94a3b8; font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; border-bottom:1px solid #e2e8f0;">
+            <tr style="color:var(--text-muted); font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; border-bottom:1px solid var(--border);">
               <th style="padding:12px 16px; font-weight:700;">Student</th>
               <th style="padding:12px 16px; font-weight:700;">Seat</th>
               <th style="padding:12px 16px; font-weight:700;">Check-In</th>
@@ -105,7 +105,7 @@ export const initAttendanceAdminUI = () => {
           </div>
           
           <div style="text-align:center; margin-bottom: 1.5rem;">
-            <div style="width: 150px; height: 150px; border: 2px dashed var(--border, #e2e8f0); border-radius: 12px; margin: 0 auto; display: flex; align-items: center; justify-content: center; flex-direction: column; color: var(--text-muted, #94a3b8); background: #f8fafc;">
+            <div style="width: 150px; height: 150px; border: 2px dashed var(--border, #e2e8f0); border-radius: 12px; margin: 0 auto; display: flex; align-items: center; justify-content: center; flex-direction: column; color: var(--text-muted, #94a3b8); background:var(--bg-hover);">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 0.5rem;"><path d="M4 4h4v4H4z"/><path d="M4 16h4v4H4z"/><path d="M16 4h4v4h-4z"/><path d="M14 14h2v2h-2z"/><path d="M18 18h2v2h-2z"/><path d="M14 18h2v2h-2z"/><path d="M18 14h2v2h-2z"/></svg>
               <span>Scanner Active...</span>
             </div>
@@ -123,7 +123,7 @@ export const initAttendanceAdminUI = () => {
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
               <button type="button" class="btn btn-ghost" onclick="document.getElementById('qr-scan-modal').close()" style="padding:8px 16px; border:1px solid var(--border, #e2e8f0); border-radius:999px; background:transparent;">Cancel</button>
-              <button type="submit" class="btn btn-primary" id="btn-submit-scan" style="padding:8px 16px; border:none; border-radius:999px; background:#0f172a; color:#fff;">Process Check-In</button>
+              <button type="submit" class="btn btn-primary" id="btn-submit-scan" style="padding:8px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Process Check-In</button>
             </div>
           </form>
         </div>
@@ -273,7 +273,7 @@ const renderChart = () => {
     let hCompleted = (d.completed / chartMax) * 100;
     if (hCompleted > 100) hCompleted = 100;
 
-    const tooltip = `<div class="chart-tooltip" style="display:none; position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #e2e8f0; box-shadow:0 4px 6px rgba(0,0,0,0.1); padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; white-space:nowrap; margin-bottom:8px; z-index:20;">
+    const tooltip = `<div class="chart-tooltip" style="display:none; position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:var(--bg-card); border:1px solid var(--border); box-shadow:0 4px 6px rgba(0,0,0,0.1); padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; white-space:nowrap; margin-bottom:8px; z-index:20;">
       ${d.label}
       <div style="color:#1e3a8a; margin-top:4px;">Check-Ins: ${d.total}</div>
       <div style="color:#e11d48; margin-top:2px;">Completed: ${d.completed}</div>
@@ -288,7 +288,7 @@ const renderChart = () => {
           <div style="background:#1e3a8a; width:14px; border-radius:3px 3px 0 0; height:${hTotal}%; transition: height 0.3s;"></div>
           <div style="background:#e11d48; width:14px; border-radius:3px 3px 0 0; height:${hCompleted}%; transition: height 0.3s;"></div>
         </div>
-        <div style="font-size:10px; color:#94a3b8; font-weight:600; margin-top:6px; position:absolute; top:100%; white-space:nowrap;">D${i+1}</div>
+        <div style="font-size:10px; color:var(--text-muted); font-weight:600; margin-top:6px; position:absolute; top:100%; white-space:nowrap;">D${i+1}</div>
       </div>
     `;
   });
@@ -309,7 +309,7 @@ const renderTable = () => {
   const activeStudents = allStudents.filter(s => s.status === 'Active');
 
   if (activeStudents.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 2rem; color: #64748b;">No active students found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 2rem; color:var(--text-secondary);">No active students found.</td></tr>`;
     return;
   }
 
@@ -325,14 +325,14 @@ const renderTable = () => {
     if (record && record.status === "Active") {
       badgeHtml = `<button onclick="window.handleForceCheckOut('${record.id}', ${record.checkIn})" title="Click to check out" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:600; display:inline-block; text-align:center; min-width:80px; cursor:pointer; transition:all 0.2s; outline:none; font-family:inherit;" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'">Present</button>`;
     } else if (record && record.status === "Completed") {
-      badgeHtml = `<span style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:600; display:inline-block; text-align:center; min-width:80px;">Completed</span>`;
+      badgeHtml = `<span style="background:var(--bg-hover); color:var(--text-secondary); border:1px solid #cbd5e1; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:600; display:inline-block; text-align:center; min-width:80px;">Completed</span>`;
     } else if (isOnLeave) {
       badgeHtml = `<button onclick="window.toggleLeave('${student.id}', '${todayStr}', false)" title="Remove Leave" style="background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:600; display:inline-block; text-align:center; min-width:80px; cursor:pointer; transition:all 0.2s; outline:none; font-family:inherit;" onmouseover="this.style.background='#ffedd5'" onmouseout="this.style.background='#fff7ed'">On Leave</button>`;
     } else {
       badgeHtml = `<span style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:600; display:inline-block; text-align:center; min-width:80px; margin-bottom: 4px;">Absent</span>
                    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:2px;">
                      <div style="font-size:10px; color:#166534; cursor:pointer; text-decoration:underline;" onclick="window.markPresent('${student.id}', event)">Mark Present</div>
-                     <div style="font-size:10px; color:#64748b; cursor:pointer; text-decoration:underline;" onclick="window.toggleLeave('${student.id}', '${todayStr}', true, event)">Mark Leave</div>
+                     <div style="font-size:10px; color:var(--text-secondary); cursor:pointer; text-decoration:underline;" onclick="window.toggleLeave('${student.id}', '${todayStr}', true, event)">Mark Leave</div>
                    </div>`;
     }
 
@@ -346,18 +346,18 @@ const renderTable = () => {
     const hrs = (record && record.duration) ? record.duration + "h" : "-";
 
     html += `
-      <tr style="border-bottom:1px solid #f1f5f9; transition:0.2s; cursor:pointer;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+      <tr style="border-bottom:1px solid var(--border); transition:0.2s; cursor:pointer;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">
         <td style="padding:16px; display:flex; align-items:center; gap:12px;">
-          <div style="width:36px; height:36px; border-radius:50%; background:#f1f5f9; color:#64748b; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px; border:1px solid #e2e8f0;">${initials}</div>
+          <div style="width:36px; height:36px; border-radius:50%; background:var(--bg-hover); color:var(--text-secondary); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:13px; border:1px solid var(--border);">${initials}</div>
           <div>
-            <div style="font-weight:600; color:#0f172a; margin-bottom:2px;">${nameStr}</div>
-            <div style="font-size:11px; color:#94a3b8; font-family:monospace;">${shortId}...</div>
+            <div style="font-weight:600; color:var(--text-primary); margin-bottom:2px;">${nameStr}</div>
+            <div style="font-size:11px; color:var(--text-muted); font-family:monospace;">${shortId}...</div>
           </div>
         </td>
-        <td style="padding:16px; font-weight:600; color:#0f172a;">${record && record.seatNumber ? record.seatNumber : assignedSeat}</td>
-        <td style="padding:16px; color:#475569;">${inTime}</td>
-        <td style="padding:16px; color:#475569;">${outTime}</td>
-        <td style="padding:16px; font-weight:500; color:#475569;">${hrs}</td>
+        <td style="padding:16px; font-weight:600; color:var(--text-primary);">${record && record.seatNumber ? record.seatNumber : assignedSeat}</td>
+        <td style="padding:16px; color:var(--text-secondary);">${inTime}</td>
+        <td style="padding:16px; color:var(--text-secondary);">${outTime}</td>
+        <td style="padding:16px; font-weight:500; color:var(--text-secondary);">${hrs}</td>
         <td style="padding:16px; text-align:right;">
           <div style="display:flex; flex-direction:column; align-items:flex-end;">
             ${badgeHtml}

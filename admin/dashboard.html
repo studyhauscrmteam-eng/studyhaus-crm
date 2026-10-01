@@ -28,7 +28,7 @@
         <div class="logo-text">
           <div style="font-weight: 700; font-size: 1.1rem; color: var(--text-primary); line-height: 1.2;">Studyhaus
           </div>
-          <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 500;">Reading Space CRM</div>
+          <div style="font-size: 0.75rem; color:var(--text-muted); font-weight: 500;">Reading Space CRM</div>
         </div>
       </div>
 
@@ -261,9 +261,6 @@
           <input type="text" data-i18n="search.students" placeholder="Search students, seats, receipts…" />
         </div>
         <div class="topbar-actions">
-          <button class="status-badge open" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;"
-            id="status-toggle" onclick="toggleStatus()"><span class="status-dot"></span><span
-              class="status-text">Open</span></button>
           <button class="icon-btn" onclick="navigate('notifications')" title="Notifications"
             style="position: relative;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
@@ -273,12 +270,17 @@
             <span
               style="position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; background-color: #ef4444; border-radius: 50%;"></span>
           </button>
-          <select class="language-select status-badge"
-            onchange="import('../services/translationService.js').then(m => m.setLanguage(this.value))"
-            style="background:#f8fafc; color:#0f172a; border:1px solid #e2e8f0; font-weight:500; font-size:0.85rem; font-family:inherit; appearance:none; padding: 4px 26px 4px 12px; border-radius: 9999px; outline: none; cursor: pointer; margin-right: 8px; height: 28px; line-height: 1; display: inline-flex; align-items: center; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%230f172a\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center;">
-            <option value="en">English</option>
-            <option value="gu">Gujarati</option>
-          </select>
+          <div class="lang-dropdown" id="lang-dropdown">
+            <button class="lang-btn" onclick="toggleLangMenu(event)" title="Language" aria-haspopup="menu">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
+              <span id="lang-current">EN</span>
+              <svg class="lang-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            <div class="lang-menu" id="lang-menu" role="menu">
+              <button class="lang-item" data-lang="en" onclick="selectLanguage('en')"><span>English</span><span class="tick">✓</span></button>
+              <button class="lang-item" data-lang="gu" onclick="selectLanguage('gu')"><span>Gujarati</span><span class="tick">✓</span></button>
+            </div>
+          </div>
           <button class="icon-btn theme-toggle" id="theme-toggle" onclick="toggleTheme()"
             title="Toggle light/dark mode">
             <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18"
@@ -524,7 +526,7 @@
             <div class="card">
               <div class="card-header">
                 <h3>Current Reminders</h3>
-                <span class="badge" style="background:var(--bg-color); color:var(--text-color);">Birthdays, Dues,
+                <span class="badge" style="background:var(--bg-hover); color:var(--text-secondary);">Birthdays, Dues,
                   Expirations</span>
               </div>
               <div class="attendance-list" id="current-reminders-list" style="max-height: 400px; overflow-y: auto;">
@@ -537,7 +539,7 @@
             <div class="card">
               <div class="card-header">
                 <h3>Follow-up Reminders</h3>
-                <span class="badge" style="background:var(--bg-color); color:var(--text-color);">Old Students</span>
+                <span class="badge" style="background:var(--bg-hover); color:var(--text-secondary);">Old Students</span>
               </div>
               <div class="attendance-list" id="old-reminders-list" style="max-height: 400px; overflow-y: auto;">
                 <div style="text-align: center; padding: 2rem; color: var(--text-muted);">Loading follow-ups...</div>
@@ -737,12 +739,12 @@
             </div>
             <div style="display: flex; gap: 0.75rem;">
               <button class="btn btn-ghost"
-                style="background: #fff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 999px; padding: 6px 16px;"><svg
+                style="background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius: 999px; padding: 6px 16px;"><svg
                   viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                   <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
                 </svg> Filter</button>
               <button class="btn btn-primary"
-                style="background: #0f172a; color: #fff; border-radius: 999px; padding: 6px 16px;">+ Add seat</button>
+                style="background:var(--text-primary); color:var(--bg-card); border:1px solid var(--border); border-radius:999px; padding:6px 16px;">+ Add seat</button>
             </div>
             <div class="seat-legend">
               <span class="legend-pill available"><span class="legend-dot"></span>Available</span>
@@ -1077,9 +1079,9 @@
 
             <!-- Form Card -->
             <div class="card"
-              style="flex: 1; padding: 2rem; border-radius: 12px; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
-              <h3 style="font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 4px;">Student details</h3>
-              <p style="font-size: 13px; color: #64748b; margin-bottom: 2rem;">Fields marked * are required. Students
+              style="flex: 1; padding: 2rem; border-radius: 12px; background:var(--bg-card); border:1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+              <h3 style="font-size: 15px; font-weight: 600; color:var(--text-primary); margin-bottom: 4px;">Student details</h3>
+              <p style="font-size: 13px; color:var(--text-secondary); margin-bottom: 2rem;">Fields marked * are required. Students
                 can sign in later using their phone number.</p>
 
               <form id="admission-form" onsubmit="event.preventDefault(); window.submitAdmissionForm();">
@@ -1196,29 +1198,29 @@
             <!-- Sticky Summary Sidebar -->
             <div style="width: 280px; position: sticky; top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
               <div class="card"
-                style="padding: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: none;">
+                style="padding: 1.5rem; background:var(--bg-card); border:1px solid var(--border); border-radius: 12px; box-shadow: none;">
                 <h4
-                  style="font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 1rem;">
+                  style="font-size: 11px; font-weight: 700; color:var(--text-muted); letter-spacing: 0.5px; margin-bottom: 1rem;">
                   SUMMARY</h4>
                 <div
-                  style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 12px;">
-                  <span>Plan</span><span id="summary-plan" style="color: #0f172a; font-weight: 600;">—</span>
+                  style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary); margin-bottom: 12px;">
+                  <span>Plan</span><span id="summary-plan" style="color:var(--text-primary); font-weight: 600;">—</span>
                 </div>
                 <div
-                  style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 12px;">
-                  <span>Amount</span><span id="summary-amount" style="color: #0f172a; font-weight: 600;">—</span>
+                  style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary); margin-bottom: 12px;">
+                  <span>Amount</span><span id="summary-amount" style="color:var(--text-primary); font-weight: 600;">—</span>
                 </div>
                 <div
-                  style="display: flex; justify-content: space-between; font-size: 13px; color: #475569; margin-bottom: 12px;">
-                  <span>Start</span><span id="summary-start" style="color: #0f172a; font-weight: 600;">—</span>
+                  style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary); margin-bottom: 12px;">
+                  <span>Start</span><span id="summary-start" style="color:var(--text-primary); font-weight: 600;">—</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569;">
-                  <span>Ends</span><span id="summary-ends" style="color: #0f172a; font-weight: 600;">—</span>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary);">
+                  <span>Ends</span><span id="summary-ends" style="color:var(--text-primary); font-weight: 600;">—</span>
                 </div>
               </div>
               <button class="btn btn-primary" id="btn-submit-admission"
                 onclick="document.getElementById('admission-form').requestSubmit()"
-                style="background: #1e3a8a; color: #fff; width: 100%; border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; border:none; cursor:pointer;">
+                style="background:var(--primary); color: #fff; width: 100%; border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; border:none; cursor:pointer;">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                   <circle cx="8.5" cy="7" r="4" />
@@ -1234,13 +1236,13 @@
           <!-- Pending Approval View -->
           <div id="view-pending-approval" style="display: none;">
             <div class="card"
-              style="padding: 1.5rem; border-radius: 12px; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+              style="padding: 1.5rem; border-radius: 12px; background:var(--bg-card); border:1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
               <h3 style="margin-bottom: 1.5rem; font-size: 15px; font-weight: 600;">Pending Approvals</h3>
               <div class="table-container">
                 <table class="data-table" style="width: 100%; text-align: left; font-size: 13px;">
                   <thead>
                     <tr
-                      style="color: #94a3b8; font-size: 11px; text-transform: uppercase; font-weight: 700; border-bottom: 1px solid #e2e8f0;">
+                      style="color:var(--text-muted); font-size: 11px; text-transform: uppercase; font-weight: 700; border-bottom:1px solid var(--border);">
                       <th style="padding: 12px 16px;">Student</th>
                       <th style="padding: 12px 16px;" data-i18n="form.phone">Phone</th>
                       <th style="padding: 12px 16px;">Plan</th>
@@ -1326,7 +1328,7 @@
                 <div style="font-size:11px; color:var(--text-muted); font-weight:500;">6 invoices</div>
               </div>
               <div
-                style="width:32px; height:32px; background:var(--bg-card)beb; color:#d97706; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+                style="width:32px; height:32px; background:rgba(245,158,11,0.15); color:#d97706; border-radius:8px; display:flex; align-items:center; justify-content:center;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
@@ -1381,7 +1383,7 @@
                     <td style="padding:16px; font-weight:600; color:var(--text-primary); text-align:right;">₹700</td>
                     <td style="padding:16px;">2026-07-27</td>
                     <td style="padding:16px; text-align:right;"><span
-                        style="background:var(--bg-card)beb; color:#d97706; border:1px solid #fde68a; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:600;">Pending</span>
+                        style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); padding:4px 12px; border-radius:999px; font-size:11px; font-weight:600;">Pending</span>
                     </td>
                   </tr>
                   <tr style="border-bottom:1px solid var(--border);">
@@ -1608,7 +1610,7 @@
                       </td>
                       <td style="padding:16px;">2026-07-19</td>
                       <td style="padding:16px; text-align:right;"><span
-                          style="background:var(--bg-card)beb; color:#d97706; border:1px solid #fde68a; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:600;">Pending</span>
+                          style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); padding:4px 12px; border-radius:999px; font-size:11px; font-weight:600;">Pending</span>
                       </td>
                     </tr>
                     <tr style="border-bottom:1px solid var(--border);">
@@ -1781,7 +1783,7 @@
                     <td style="padding:16px;">2025-02-20</td>
                     <td style="padding:16px; font-weight:600; color:var(--text-primary); text-align:right;">₹12,000</td>
                     <td style="padding:16px; text-align:right;"><span
-                        style="background:var(--bg-card)beb; color:#d97706; border:1px solid #fde68a; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:600;">On
+                        style="background:rgba(245,158,11,0.15); color:#d97706; border:1px solid rgba(245,158,11,0.3); padding:4px 12px; border-radius:999px; font-size:11px; font-weight:600;">On
                         Leave</span></td>
                   </tr>
                 </tbody>

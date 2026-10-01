@@ -10,6 +10,19 @@ import {
   deleteDoc
 } from "firebase/firestore";
 
+// Escape user content for safe insertion into HTML attributes / text.
+// Prevents broken markup (e.g. a " or ' inside a benefit tag) from
+// breaking the input value or the onclick="..." handlers, which made
+// benefit tags and plans impossible to discard.
+const escapeHtml = (str) =>
+  String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+const escapeAttr = escapeHtml;
+
 /**
  * Client-side Canvas Image Compression
  * Converts any uploaded image File into an optimized, high-quality base64 JPEG
@@ -287,12 +300,28 @@ export const websiteAdminUI = {
       const plansRef = collection(db, "membershipPlans");
       onSnapshot(plansRef, (snapshot) => {
         if (snapshot.empty) {
+          // If we previously had plans, the user deleted them all — respect
+          // the empty state so deleted plans/tags stay discarded.
+          // Only auto-seed on the very first load (no plans ever loaded).
+          if (this.plans && this.plans.length > 0) {
+            this.plans = [];
+            this.renderPlans();
+            return;
+          }
           this.seedInitialPlans();
           return;
         }
         const loaded = [];
         snapshot.forEach((d) => {
-          loaded.push({ id: d.id, ...d.data() });
+          const data = d.data() || {};
+          // Normalize benefits / benefitsEn to a single in-memory list.
+          // Older plans may only have `benefitsEn`; newer ones have both.
+          // Without normalization, remove/update only touched `benefits`,
+          // so tags backed by `benefitsEn` could never be discarded.
+          const normalized = Array.isArray(data.benefits)
+            ? [...data.benefits]
+            : (Array.isArray(data.benefitsEn) ? [...data.benefitsEn] : []);
+          loaded.push({ id: d.id, ...data, benefits: normalized, benefitsEn: [...normalized] });
         });
         this.plans = loaded;
         this.renderPlans();
@@ -723,24 +752,33 @@ export const websiteAdminUI = {
       const card = document.createElement("div");
       card.className = `website-plan-card ${plan.featured ? "featured-card" : ""}`;
 
-      const benefits = Array.isArray(plan.benefits) && plan.benefits.length > 0
+      // Use the normalized in-memory list. Do NOT fall back to benefitsEn
+      // when benefits is empty — an empty list means the user discarded
+      // all tags and must stay empty (old code resurrected deleted tags).
+      const benefits = Array.isArray(plan.benefits)
         ? plan.benefits
         : (Array.isArray(plan.benefitsEn) ? plan.benefitsEn : []);
 
       const benefitsListHtml = benefits.map((b, bIdx) => `
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; background:var(--bg-hover); padding:6px 10px; border-radius:8px; border:1px solid var(--border);">
           <span style="color:var(--accent-emerald, #10b981); font-weight:700; font-size:12px;">✓</span>
-          <input type="text" class="form-control form-control-sm" value="${b}" onchange="websiteAdminUI.updatePlanBenefit('${plan.id}', ${bIdx}, this.value)" style="border:none; background:transparent; font-size:0.8rem; padding:0; height:auto; color:var(--text-primary); flex:1;" />
+          <input type="text" class="form-control form-control-sm" value="${escapeAttr(b)}" onchange="websiteAdminUI.updatePlanBenefit('${plan.id}', ${bIdx}, this.value)" style="border:none; background:transparent; font-size:0.8rem; padding:0; height:auto; color:var(--text-primary); flex:1;" />
           <button type="button" onclick="websiteAdminUI.removePlanBenefit('${plan.id}', ${bIdx})" style="border:none; background:transparent; cursor:pointer; color:var(--text-muted); font-size:14px; line-height:1; padding:2px 6px;" title="Remove point">&times;</button>
         </div>
       `).join("");
+
+      const safeIdShort = escapeHtml(String(plan.id || "").slice(0, 8));
+      const safeName = escapeAttr(plan.planName || plan.nameEn || "");
+      const safeNameGu = escapeAttr(plan.nameGu || "");
+      const safeDuration = escapeAttr(plan.duration || plan.taglineEn || "");
+      const safeBadge = escapeAttr(plan.badge || plan.badgeEn || "");
 
       card.innerHTML = `
         <div>
           <!-- Plan Header -->
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; padding-bottom:0.75rem; border-bottom:1px solid var(--border);">
             <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-              <span class="badge" style="font-family:monospace; font-size:11px; background:var(--bg-hover); color:var(--text-muted); border:1px solid var(--border);">ID: ${plan.id.slice(0, 8)}</span>
+              <span class="badge" style="font-family:monospace; font-size:11px; background:var(--bg-hover); color:var(--text-muted); border:1px solid var(--border);">ID: ${safeIdShort}</span>
               ${plan.featured ? `
                 <span style="background:linear-gradient(135deg, #f59e0b, #d97706); color:white; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -752,7 +790,7 @@ export const websiteAdminUI = {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
                 Save
               </button>
-              <button class="btn btn-ghost btn-sm" onclick="websiteAdminUI.deletePlan('${plan.id}', '${plan.planName || "Plan"}')" style="color:var(--accent-red, #f43f5e); padding:4px 8px;" title="Delete this plan">
+              <button class="btn btn-ghost btn-sm" onclick="websiteAdminUI.deletePlan('${plan.id}')" style="color:var(--accent-red, #f43f5e); padding:4px 8px;" title="Delete this plan">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
             </div>
@@ -762,11 +800,11 @@ export const websiteAdminUI = {
           <div class="plan-fields-grid">
             <div>
               <label class="facility-label">Plan Name (English)</label>
-              <input type="text" class="form-control" id="plan-name-${plan.id}" value="${plan.planName || plan.nameEn || ""}" />
+              <input type="text" class="form-control" id="plan-name-${plan.id}" value="${safeName}" />
             </div>
             <div>
               <label class="facility-label">Plan Name (Gujarati)</label>
-              <input type="text" class="form-control" id="plan-nameGu-${plan.id}" value="${plan.nameGu || ""}" placeholder="દા.ત. ફુલ ડે પ્લાન" />
+              <input type="text" class="form-control" id="plan-nameGu-${plan.id}" value="${safeNameGu}" placeholder="દા.ત. ફુલ ડે પ્લાન" />
             </div>
             <div>
               <label class="facility-label">Price (₹ / Month)</label>
@@ -777,7 +815,7 @@ export const websiteAdminUI = {
             </div>
             <div>
               <label class="facility-label">Duration / Tagline</label>
-              <input type="text" class="form-control" id="plan-duration-${plan.id}" value="${plan.duration || plan.taglineEn || ""}" placeholder="e.g. 1 Month / 17 hrs daily" />
+              <input type="text" class="form-control" id="plan-duration-${plan.id}" value="${safeDuration}" placeholder="e.g. 1 Month / 17 hrs daily" />
             </div>
             <div>
               <label class="facility-label">Seat Type</label>
@@ -790,7 +828,7 @@ export const websiteAdminUI = {
             </div>
             <div>
               <label class="facility-label">Highlight Ribbon Badge</label>
-              <input type="text" class="form-control" id="plan-badge-${plan.id}" value="${plan.badge || plan.badgeEn || ""}" placeholder="e.g. Recommended, Popular" />
+              <input type="text" class="form-control" id="plan-badge-${plan.id}" value="${safeBadge}" placeholder="e.g. Recommended, Popular" />
             </div>
           </div>
 
@@ -859,17 +897,39 @@ export const websiteAdminUI = {
     }
   },
 
+  getPlanBenefits(plan) {
+    if (Array.isArray(plan.benefits)) return plan.benefits;
+    if (Array.isArray(plan.benefitsEn)) {
+      plan.benefits = [...plan.benefitsEn];
+      return plan.benefits;
+    }
+    plan.benefits = [];
+    return plan.benefits;
+  },
+
+  syncPlanBenefits(plan) {
+    const list = this.getPlanBenefits(plan);
+    plan.benefitsEn = [...list];
+    return list;
+  },
+
   updatePlanBenefit(planId, bIdx, val) {
     const plan = this.plans.find((p) => p.id === planId);
     if (!plan) return;
-    if (!plan.benefits) plan.benefits = [];
-    plan.benefits[bIdx] = val;
+    const list = this.getPlanBenefits(plan);
+    list[bIdx] = val;
+    this.syncPlanBenefits(plan);
   },
 
   removePlanBenefit(planId, bIdx) {
     const plan = this.plans.find((p) => p.id === planId);
-    if (!plan || !plan.benefits) return;
-    plan.benefits.splice(bIdx, 1);
+    if (!plan) return;
+    const list = this.getPlanBenefits(plan);
+    if (bIdx < 0 || bIdx >= list.length) return;
+    list.splice(bIdx, 1);
+    // Keep both arrays in sync so a discarded tag does not reappear
+    // via the legacy `benefitsEn` fallback on re-render / save.
+    this.syncPlanBenefits(plan);
     this.renderPlans();
   },
 
@@ -878,8 +938,9 @@ export const websiteAdminUI = {
     if (!input || !input.value.trim()) return;
     const plan = this.plans.find((p) => p.id === planId);
     if (!plan) return;
-    if (!plan.benefits) plan.benefits = [];
-    plan.benefits.push(input.value.trim());
+    const list = this.getPlanBenefits(plan);
+    list.push(input.value.trim());
+    this.syncPlanBenefits(plan);
     input.value = "";
     this.renderPlans();
   },
@@ -909,9 +970,12 @@ export const websiteAdminUI = {
     const featuredInput = document.getElementById(`plan-featured-${planId}`);
     const featured = featuredInput ? featuredInput.checked : (!!plan.featured);
 
-    const currentBenefits = Array.isArray(plan.benefits) && plan.benefits.length > 0
-      ? plan.benefits
-      : (Array.isArray(plan.benefitsEn) ? plan.benefitsEn : []);
+    // Allow an empty list — discarding all tags must persist as [].
+    // Old code fell back to benefitsEn when benefits was empty, so
+    // deleted tags instantly reappeared after re-render / save.
+    const currentBenefits = Array.isArray(plan.benefits)
+      ? [...plan.benefits]
+      : (Array.isArray(plan.benefitsEn) ? [...plan.benefitsEn] : []);
 
     const updates = {
       planName: name,
@@ -925,9 +989,12 @@ export const websiteAdminUI = {
       badgeEn: badge,
       featured: featured,
       benefits: currentBenefits,
-      benefitsEn: currentBenefits,
+      benefitsEn: [...currentBenefits],
       updatedAt: new Date().toISOString()
     };
+    // Keep local state in sync so re-renders don't resurrect old tags.
+    plan.benefits = [...currentBenefits];
+    plan.benefitsEn = [...currentBenefits];
 
     try {
       const docRef = doc(db, "membershipPlans", planId);
@@ -942,10 +1009,16 @@ export const websiteAdminUI = {
   },
 
   async deletePlan(planId, planName) {
-    if (confirm(`Are you sure you want to delete the plan "${planName}"? This will remove it from both the software and website.`)) {
+    const plan = this.plans.find((p) => p.id === planId);
+    const displayName = planName || plan?.planName || plan?.nameEn || "Plan";
+    if (confirm(`Are you sure you want to delete the plan "${displayName}"? This will remove it from both the software and website.`)) {
       try {
         const docRef = doc(db, "membershipPlans", planId);
         await deleteDoc(docRef);
+        // Optimistically drop it from local state so the card/tag
+        // disappears instantly even before the snapshot fires.
+        this.plans = (this.plans || []).filter((p) => p.id !== planId);
+        this.renderPlans();
         if (typeof window.showToast === "function") {
           window.showToast("Plan deleted successfully!", "success");
         }
