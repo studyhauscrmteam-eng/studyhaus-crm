@@ -160,6 +160,33 @@
       color: #94a3b8;
     }
 
+    .pw-wrap {
+      position: relative;
+    }
+
+    .pw-wrap input {
+      padding-right: 38px;
+      font-size: 0.9rem;
+    }
+
+    .pw-eye {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      line-height: 1;
+      color: #64748b;
+      padding: 2px;
+    }
+
+    .pw-eye:hover {
+      color: #0f172a;
+    }
+
     .btn-submit {
       width: 100%;
       background: #059669;
@@ -252,7 +279,6 @@
 
       <div class="auth-tabs">
         <a href="student-login.html" class="auth-tab active">Sign in</a>
-        <a href="student-register.html" class="auth-tab">Create account</a>
       </div>
 
       <div id="error-message"></div>
@@ -264,7 +290,11 @@
         </div>
         <div class="form-group">
           <label>Password</label>
-          <input type="password" id="password" required placeholder="••••••••" />
+          <div class="pw-wrap">
+            <input type="password" id="password" required placeholder="••••••••"
+              autocapitalize="none" autocorrect="off" spellcheck="false" />
+            <button type="button" class="pw-eye" id="pw-eye" title="Show / hide password" aria-label="Show password">👁</button>
+          </div>
         </div>
 
         <button type="submit" class="btn-submit">Sign in</button>
@@ -285,13 +315,24 @@
   <script type="module">
     import "./services/translationService.js";
     import { initAuthGuard } from "./auth/guard.js";
-    import { loginWithPhone } from "../services/authService.js";
+    import { handlePhoneLogin } from "./auth/login.js?v=login2";
 
     initAuthGuard();
 
     const form = document.getElementById("login-form");
     const errorDiv = document.getElementById("error-message");
     const loader = document.getElementById("global-loader");
+
+    const pwEye = document.getElementById("pw-eye");
+    if (pwEye) {
+      pwEye.addEventListener("click", () => {
+        const pw = document.getElementById("password");
+        if (!pw) return;
+        const wasHidden = pw.type === "password";
+        pw.type = wasHidden ? "text" : "password";
+        pwEye.textContent = wasHidden ? "🙈" : "👁";
+      });
+    }
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -302,7 +343,11 @@
       const password = document.getElementById("password").value;
 
       try {
-        await loginWithPhone(identifier, password);
+        // Signs in, resolves the role and redirects to the student dashboard.
+        // Any problem (wrong password, missing profile, disabled account)
+        // shows a clear message here instead of failing silently.
+        // Loader stays visible until the redirect happens.
+        await handlePhoneLogin(identifier, password);
       } catch (error) {
         loader.style.display = "none";
         errorDiv.textContent = error.message;

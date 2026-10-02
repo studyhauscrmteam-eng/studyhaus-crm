@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
-import { login as authServiceLogin, setSessionPersistence } from "../services/authService.js";
+import { login as authServiceLogin, loginWithPhone, setSessionPersistence } from "../services/authService.js";
 import { getDocument } from "../services/firestoreService.js";
 import { ROLES } from "./roles.js";
 import { toUserFriendlyAuthError } from "./errorMessages.js";
@@ -42,15 +42,12 @@ export const getRedirectUrlForRole = (rawRole) => {
 };
 
 /**
- * Handle user login flow
- * @param {string} email 
- * @param {string} password 
+ * Complete a login: resolve the user's profile/role, cache it in
+ * localStorage, then redirect to that role's dashboard. Shared by the staff
+ * email login and the Student Portal (phone/email) login.
+ * @param {Object} user - authenticated Firebase user
  */
-export const handleLogin = async (email, password) => {
-  try {
-    await setSessionPersistence();
-    const user = await authServiceLogin(email, password);
-    
+export const completeLogin = async (user) => {
     let userDoc = null;
     let docId = user.uid;
 
@@ -60,9 +57,12 @@ export const handleLogin = async (email, password) => {
     } catch (_) { /* ignore permission errors */ }
 
     // 2. Also check role-named collections (Manager, Employee, Owner/Admin)
-    //    — handles documents created manually in Firestore by an admin
+    //    — handles documents created manually in Firestore by an admin.
+    //    "students" is checked FIRST: admitted students have students/{uid}
+    //    and no users doc, and the other collections deny reads for them
+    //    (permission-denied retries would stall the login for seconds).
     if (!userDoc || !userDoc.role) {
-      const roleCollections = ["Manager", "Employee", "Owner", "Admin", "students"];
+      const roleCollections = ["students", "Manager", "Employee", "Owner", "Admin"];
       for (const col of roleCollections) {
         try {
           const doc = await retryWithBackoff(() => getDocument(col, user.uid));
@@ -109,7 +109,7 @@ export const handleLogin = async (email, password) => {
         docId = user.uid;
       } else {
         throw new Error(
-          "User profile not found. If you recently registered, please click 'Create account' again with the same credentials to complete your setup."
+          "User profile not found. Please contact the administration to complete your setup."
         );
       }
     }
@@ -122,8 +122,36 @@ export const handleLogin = async (email, password) => {
     localStorage.setItem("userId", docId); // Store actual doc ID, whether UID or auto-id
 
     window.location.href = getRedirectUrlForRole(userDoc.role);
+};
+
+/**
+ * Handle staff login flow (email + password)
+ * @param {string} email 
+ * @param {string} password 
+ */
+export const handleLogin = async (email, password) => {
+  try {
+    await setSessionPersistence();
+    const user = await authServiceLogin(email, password);
+    await completeLogin(user);
   } catch (error) {
-    console.error("Login Error:", error);
+    throw new Error(toUserFriendlyAuthError(error));
+  }
+};
+
+/**
+ * Handle Student Portal login (10-digit phone or email + password)
+ * Resolves the role and redirects explicitly — never leaves the login page
+ * hanging silently if profile lookup fails.
+ * @param {string} identifier - phone number or email
+ * @param {string} password 
+ */
+export const handlePhoneLogin = async (identifier, password) => {
+  try {
+    await setSessionPersistence();
+    const user = await loginWithPhone(identifier, password);
+    await completeLogin(user);
+  } catch (error) {
     throw new Error(toUserFriendlyAuthError(error));
   }
 };

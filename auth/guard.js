@@ -1,6 +1,6 @@
 import { onAuthStateChanged, logout } from "../services/authService.js";
 import { getDocument } from "../services/firestoreService.js";
-import { getRedirectUrlForRole } from "./login.js";
+import { getRedirectUrlForRole } from "./login.js?v=login2";
 import { protectRoute } from "./middleware.js";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
@@ -51,9 +51,11 @@ export const initAuthGuard = () => {
             userDoc = await retryWithBackoff(() => getDocument("users", user.uid));
           } catch (_) { /* ignore permission errors */ }
 
-          // 2. Role-named collections (Manager, Employee, etc.) by UID
+          // 2. Role-named collections (Manager, Employee, etc.) by UID.
+          //    "students" first: admitted students live at students/{uid} and
+          //    the other collections deny reads for them (slow retries).
           if (!userDoc || !userDoc.role) {
-            const roleCollections = ["Manager", "Employee", "Owner", "Admin", "students"];
+            const roleCollections = ["students", "Manager", "Employee", "Owner", "Admin"];
             for (const col of roleCollections) {
               try {
                 const doc = await getDocument(col, user.uid);

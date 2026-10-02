@@ -1,7 +1,8 @@
 import { collection, addDoc, serverTimestamp, getDocs, query, where, onSnapshot, doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 import { validateStudentData } from "./studentValidation.js";
-import { approveAdmission, rejectAdmission } from "./approvalService.js";
+import { approveAdmission, rejectAdmission } from "./approvalService.js?v=login3";
+import { createPortalAccount } from "./authService.js?v=login5";
 import { getAuth } from "firebase/auth";
 
 /**
@@ -86,8 +87,35 @@ export const submitAdmission = async (formData, isStudent) => {
       // Admin Admission
       formData.approvalStatus = "Approved";
       formData.status = "Active";
-      const studentRef = await addDoc(collection(db, "students"), formData);
-      return { success: true, studentId: studentRef.id };
+
+      // ── Student Portal login ──────────────────────────────────────────
+      // If Login ID + Password were entered on the admission form, create a
+      // REAL Firebase Auth account first, then key the student document by
+      // that uid — the portal and auth guard both look up students/{uid}.
+      const loginId = String(formData.loginId || "").trim();
+      const loginPassword = String(formData.loginPassword || "").trim();
+
+      if ((loginId && !loginPassword) || (!loginId && loginPassword)) {
+        throw new Error("Fill in BOTH Login ID and Password to create a portal login (or leave both empty).");
+      }
+
+      let uid = null;
+      if (loginId && loginPassword) {
+        const account = await createPortalAccount(loginId, loginPassword); // throws with a clear message on failure
+        uid = account.uid;
+        formData.uid = uid;
+        formData.authEmail = account.authEmail;
+      }
+
+      let studentId;
+      if (uid) {
+        await setDoc(doc(db, "students", uid), formData);
+        studentId = uid;
+      } else {
+        const studentRef = await addDoc(collection(db, "students"), formData);
+        studentId = studentRef.id;
+      }
+      return { success: true, studentId, accountCreated: !!uid };
     }
     
     return { success: true };
@@ -509,6 +537,9 @@ export const initAdmissionsUI = async () => {
           if (pass) return pass;
           return "";
         })(),
+        // Raw fields used to create the real Student Portal login account
+        loginId: document.getElementById("adm-login-id")?.value?.trim() || "",
+        loginPassword: document.getElementById("adm-login-pass")?.value?.trim() || "",
         planId: planId,
         planName: plan ? plan.planName : "",
         seatAssigned: selectedSeatNumber,
@@ -538,7 +569,12 @@ export const initAdmissionsUI = async () => {
                 lastUpdated: serverTimestamp()
               });
             }
-            window.showToast("Student successfully admitted as Active!", "success");
+            window.showToast(
+              res.accountCreated
+                ? `Student admitted! Portal login created — student signs in with: ${data.loginId}`
+                : "Student successfully admitted as Active!",
+              "success"
+            );
         }
         window.resetAdmission();
       } else {

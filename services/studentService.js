@@ -1,4 +1,4 @@
-import { collection, doc, updateDoc, onSnapshot, getDocs, query, where, serverTimestamp, getDoc, addDoc } from "firebase/firestore";
+import { collection, doc, updateDoc, onSnapshot, getDocs, query, where, serverTimestamp, getDoc, addDoc, setDoc, deleteDoc, deleteField } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 
 /**
@@ -63,6 +63,101 @@ export const softDeleteStudent = async (studentId) => {
   } catch (error) {
     return { success: false, error: error.message };
   }
+};
+
+/**
+ * Create the Student Portal login for an EXISTING student (admin sets the
+ * Login ID + Password from the Student Info popup).
+ *
+ * The portal and auth guard look up students/{uid}, so once the Firebase
+ * Auth account exists we migrate the student document from its old auto-id
+ * to the uid and repoint every reference (payments, attendance, seat, ...).
+ *
+ * @returns {Promise<{uid, authEmail, loginCredentials}>}
+ */
+/**
+ * Remove ONLY the portal-login credential fields from a student document —
+ * profile, payments, seat, documents and everything else stay untouched.
+ * (The Firebase Auth account itself cannot be deleted from a browser; if the
+ * same ID + password are entered again they simply re-link to it.)
+ */
+export const clearPortalCredentials = async (studentId) => {
+  await updateDoc(doc(db, "students", studentId), {
+    loginId: deleteField(),
+    loginPassword: deleteField(),
+    loginCredentials: deleteField(),
+    uid: deleteField(),
+    authEmail: deleteField()
+  });
+};
+
+export const createPortalLoginForStudent = async (studentId, loginId, loginPassword) => {
+  const { createPortalAccount } = await import("./authService.js?v=login5");
+  const account = await createPortalAccount(loginId, loginPassword); // throws with a clear message
+
+  const oldRef = doc(db, "students", studentId);
+  const snap = await getDoc(oldRef);
+  if (!snap.exists()) throw new Error("Student record not found.");
+  const data = snap.data();
+  if (data.uid && data.uid !== account.uid) {
+    throw new Error("This student is already linked to a different portal account.");
+  }
+  if (studentId !== account.uid) {
+    const existingAtUid = await getDoc(doc(db, "students", account.uid));
+    if (existingAtUid.exists()) {
+      throw new Error("These login credentials already belong to a different student. Use that student's own Login ID, or pick a different Login ID.");
+    }
+  }
+
+  const loginCredentials = `${loginId} / ${loginPassword}`;
+  const payload = {
+    ...data,
+    uid: account.uid,
+    authEmail: account.authEmail,
+    loginId,
+    loginPassword,
+    loginCredentials,
+    updatedAt: serverTimestamp()
+  };
+
+  // Already keyed by this uid — update in place (never write then delete the
+  // same document reference).
+  if (studentId === account.uid) {
+    await updateDoc(oldRef, payload);
+    return { uid: account.uid, authEmail: account.authEmail, loginCredentials };
+  }
+
+  // 1. Create the uid-keyed document (portal reads students/{uid})
+  const newRef = doc(db, "students", account.uid);
+  await setDoc(newRef, payload);
+
+  // 2. Repoint references old id -> uid
+  const refCollections = ["payments", "attendance", "complaints", "renewals", "documents"];
+  for (const colName of refCollections) {
+    try {
+      const snap2 = await getDocs(query(collection(db, colName), where("studentId", "==", studentId)));
+      for (const d of snap2.docs) await updateDoc(d.ref, { studentId: account.uid });
+    } catch (_) { /* collection may be empty or denied — skip */ }
+  }
+  try {
+    const seatSnap = await getDocs(query(collection(db, "seats"), where("assignedStudentId", "==", studentId)));
+    for (const d of seatSnap.docs) await updateDoc(d.ref, { assignedStudentId: account.uid });
+  } catch (_) { /* no seat linked */ }
+
+  // studentDocuments is keyed BY the student id — move the doc
+  try {
+    const docsOldRef = doc(db, "studentDocuments", studentId);
+    const docsSnap = await getDoc(docsOldRef);
+    if (docsSnap.exists()) {
+      await setDoc(doc(db, "studentDocuments", account.uid), docsSnap.data());
+      await deleteDoc(docsOldRef);
+    }
+  } catch (_) { /* no documents stored */ }
+
+  // 3. Remove the old auto-id student document
+  await deleteDoc(oldRef);
+
+  return { uid: account.uid, authEmail: account.authEmail, loginCredentials };
 };
 
 /**

@@ -1,4 +1,4 @@
-import { listenToAllStudents, softDeleteStudent, updateStudentProfile } from "./studentService.js";
+import { listenToAllStudents, softDeleteStudent, updateStudentProfile, createPortalLoginForStudent, clearPortalCredentials } from "./studentService.js?v=login6";
 import { searchStudents, filterStudents, sortStudents, paginateStudents } from "./studentDataProcessing.js";
 import { fetchPlansForDropdown } from "./admissionService.js";
 import { convertToOldStudent } from "./oldStudentService.js";
@@ -6,6 +6,9 @@ import { loadStudentDocuments, renderStudentDocuments } from "./documentUploadSe
 
 let allStudents = [];
 let currentProfileStudentId = null;
+// Tracks a portal account created during this session (old doc id -> new uid)
+// so a retried save doesn't attempt to create the account twice.
+let portalCreated = { oldId: null, uid: null };
 let currentQuery = "";
 let currentFilters = { status: "All", plan: "All" };
 let currentSort = { by: "name", order: "asc" };
@@ -243,6 +246,22 @@ const renderProfileModal = (s, role) => {
   const readOnlyForManager = isManager ? "disabled" : "";
   const hideForEmployee = !canEdit ? "display:none;" : "";
 
+  // ── Portal login state (Owner sets/creates it from this popup) ──────────
+  const hasPortalAccount = !!(s.uid || s.authEmail);
+  // Split into two fields: prefer raw fields, fall back to legacy "id / pass"
+  let portalId = s.loginId || "";
+  let portalPass = s.loginPassword || "";
+  if (!portalId && !portalPass && s.loginCredentials) {
+    const rawCred = String(s.loginCredentials);
+    const slashIdx = rawCred.indexOf("/");
+    if (slashIdx !== -1) {
+      if (!portalId) portalId = rawCred.slice(0, slashIdx).trim();
+      if (!portalPass) portalPass = rawCred.slice(slashIdx + 1).trim();
+    } else if (!portalId) {
+      portalId = rawCred.trim();
+    }
+  }
+
   let planOptions = `<option value="">Select Plan...</option>`;
   availablePlans.forEach(p => {
     const selected = p.id === s.planId ? "selected" : "";
@@ -368,9 +387,45 @@ const renderProfileModal = (s, role) => {
               <input type="text" id="edit-remarks" value="${s.remarks || ''}" ${!canEdit ? 'disabled' : ''} />
             </div>
             ${isOwner ? `
+            <div class="form-group">
+              <label>Login ID</label>
+              <input type="text" id="view-login-id"
+                value="${portalId}"
+                placeholder="e.g. 9876543210 or student@email.com"
+                autocapitalize="none" autocorrect="off" spellcheck="false"
+                ${hasPortalAccount
+                  ? `readonly disabled style="background: var(--bg-hover); color: var(--text-muted); cursor: not-allowed; font-size:13px; font-family:inherit;"`
+                  : `style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); cursor: text; font-size:13px; font-family:inherit; -webkit-text-fill-color: var(--text-primary); -webkit-box-shadow: 0 0 0 30px var(--bg-card) inset !important; -moz-box-shadow: 0 0 0 30px var(--bg-card) inset !important; box-shadow: 0 0 0 30px var(--bg-card) inset !important;"`}
+                 />
+                <small style="font-size:10.5px; color:var(--text-muted); line-height:1.4;">10-digit phone (e.g. 9876543210) or an email (e.g. name@gmail.com)</small>
+            </div>
+            <div class="form-group">
+              <label>Login Password</label>
+              <div style="position: relative;">
+                <input type="password" id="view-login-pass"
+                  value="${portalPass}"
+                  placeholder="••••••••"
+                  autocapitalize="none" autocorrect="off" spellcheck="false"
+                  ${hasPortalAccount
+                    ? `readonly disabled style="background: var(--bg-hover); color: var(--text-muted); cursor: not-allowed; font-size:13px; font-family:inherit; padding-right:34px; width:100%;"`
+                    : `style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); cursor: text; font-size:13px; font-family:inherit; padding-right:34px; width:100%; -webkit-text-fill-color: var(--text-primary); -webkit-box-shadow: 0 0 0 30px var(--bg-card) inset !important; -moz-box-shadow: 0 0 0 30px var(--bg-card) inset !important; box-shadow: 0 0 0 30px var(--bg-card) inset !important;"`}
+                   />
+                <button type="button" id="btn-eye-pass" title="Show / hide password"
+                  onclick="var i=document.getElementById('view-login-pass');if(i){var h=i.type==='password';i.type=h?'text':'password';this.textContent=h?'🙈':'👁';}"
+                  style="position:absolute; right:3px; top:50%; transform:translateY(-50%); z-index:2; width:28px; height:28px; background:none; border:none; cursor:pointer; font-size:15px; line-height:1; color:var(--text-muted); padding:0;">👁</button>
+              </div>
+                <small style="font-size:10.5px; color:var(--text-muted); line-height:1.4;">Minimum 6 characters.</small>
+            </div>
             <div class="form-group" style="grid-column: span 2;">
-              <label>Login Credentials (Admin view only)</label>
-              <input type="text" id="view-login-credentials" value="${s.loginCredentials || 'Loading...'}" readonly disabled style="background: var(--bg-hover); color: var(--text-muted); cursor: not-allowed;" />
+              <div style="display:flex; gap:10px; align-items:center;">
+                ${hasPortalAccount
+                  ? `<small style="font-size:11.5px; color:#166534; font-weight:600;">🟢 Login active</small>`
+                  : `<small style="font-size:11.5px; color:#b91c1c; font-weight:600;">🔴 Login not created — fill both &amp; Save</small>`}
+                ${hasPortalAccount || portalId || portalPass
+                  ? `<button type="button" id="btn-clear-login" class="btn btn-ghost" title="Remove only the stored Login ID / Password — nothing else"
+                      style="margin-left:auto; padding:5px 12px; font-size:11.5px; font-weight:600; border-radius:8px;">Clear login</button>`
+                  : ""}
+              </div>
             </div>
             ` : ''}
 
@@ -422,22 +477,43 @@ const renderProfileModal = (s, role) => {
   `;
   modal.showModal();
 
-  if (isOwner && !s.loginCredentials) {
-    import("./firestoreService.js").then(({ getDocument }) => {
-      getDocument("users", s.id).then(userDoc => {
-        const input = document.getElementById("view-login-credentials");
-        if (input) {
-          if (userDoc && userDoc.loginCredentials) {
-            input.value = userDoc.loginCredentials;
-          } else {
-            input.value = "Not set";
-          }
-        }
-      }).catch(() => {
-        const input = document.getElementById("view-login-credentials");
-        if (input) input.value = "Not set";
-      });
+  // "Clear login" — removes ONLY the credential fields from the student doc.
+  const clearBtn = document.getElementById("btn-clear-login");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", async () => {
+      const ok = await window.showCustomConfirm(
+        "Remove Login Credentials",
+        "Remove ONLY the stored Login ID / Login Password for this student? All other data stays untouched.",
+        "Remove",
+        false
+      );
+      if (!ok) return;
+      clearBtn.disabled = true;
+      try {
+        await clearPortalCredentials(s.id);
+        window.showToast("Credentials removed. Enter a fresh Login ID + Password and Save.", "success");
+        window.closeStudentProfile();
+      } catch (e) {
+        window.showToast("Could not remove credentials: " + e.message, "error");
+        clearBtn.disabled = false;
+      }
     });
+  }
+
+  if (isOwner && hasPortalAccount && !portalId && !portalPass && s.uid) {
+    // Rare: uid-keyed doc without stored credentials — check the auth profile.
+    import("./firestoreService.js").then(({ getDocument }) => {
+      getDocument("users", s.uid).then(userDoc => {
+        if (userDoc && userDoc.loginCredentials) {
+          const rawCred = String(userDoc.loginCredentials);
+          const sIdx = rawCred.indexOf("/");
+          const idEl = document.getElementById("view-login-id");
+          const passEl = document.getElementById("view-login-pass");
+          if (idEl && sIdx !== -1) idEl.value = rawCred.slice(0, sIdx).trim();
+          if (passEl && sIdx !== -1) passEl.value = rawCred.slice(sIdx + 1).trim();
+        }
+      }).catch(() => {});
+    }).catch(() => {});
   }
 
   if (s.selfieUrl) {
@@ -476,9 +552,72 @@ window.submitStudentEdit = async (id) => {
       plannedExitDate: document.getElementById("edit-leaving-date").value,
       remarks: document.getElementById("edit-remarks").value
     };
-    const res = await updateStudentProfile(id, updates);
+
+    // ── Owner: create the Student Portal login from the two Login fields ──
+    let targetId = id;
+    let portalMsg = "";
+    const idInput = document.getElementById("view-login-id");
+    const passInput = document.getElementById("view-login-pass");
+    if (portalCreated.oldId === id) {
+      // Account was already created earlier in this modal session (retry after
+      // a failed save) — just target the migrated document.
+      targetId = portalCreated.uid;
+    } else if (idInput && !idInput.disabled) {
+      const loginId = (idInput.value || "").trim();
+      const loginPassword = (passInput ? passInput.value : "").trim();
+      if (!loginId && !loginPassword) {
+        // Both fields cleared — drop any stored (not yet activated) credentials
+        updates.loginCredentials = "";
+        updates.loginId = "";
+        updates.loginPassword = "";
+      } else if (!loginId || !loginPassword) {
+        // Incomplete — keep the draft so it isn't lost on reload
+        updates.loginId = loginId;
+        updates.loginPassword = loginPassword;
+        updates.loginCredentials = loginId && loginPassword ? `${loginId} / ${loginPassword}` : "";
+        window.showToast("Fill BOTH Login ID and Login Password to enable portal login — or clear both fields.", "warning");
+      } else {
+        // ── Same rules the account system enforces — check BEFORE creating
+        // so the toast tells you exactly what to fix.
+        const phoneLike = /^[\d\s\-\+\(\)]+$/.test(loginId);
+        let idDigits = loginId.replace(/\D/g, "");
+        if (idDigits.length === 12 && idDigits.startsWith("91")) idDigits = idDigits.slice(2);
+        else if (idDigits.length === 11 && idDigits.startsWith("0")) idDigits = idDigits.slice(1);
+        const idOk = phoneLike ? idDigits.length === 10 : /^[^\s@]+@[^\s@]+$/.test(loginId);
+        if (!idOk) {
+          window.showToast("Login ID must be a 10-digit phone number (e.g. 9876543210) or an email address (e.g. name@gmail.com).", "error");
+          btn.textContent = "Save Changes";
+          btn.disabled = false;
+          return;
+        }
+        if (loginPassword.length < 6) {
+          window.showToast("Portal password must be at least 6 characters.", "error");
+          btn.textContent = "Save Changes";
+          btn.disabled = false;
+          return;
+        }
+        try {
+          const acc = await createPortalLoginForStudent(id, loginId, loginPassword);
+          portalCreated = { oldId: id, uid: acc.uid };
+          targetId = acc.uid; // student doc now lives at students/{uid}
+          updates.uid = acc.uid;
+          updates.authEmail = acc.authEmail;
+          updates.loginId = loginId;
+          updates.loginPassword = loginPassword;
+          updates.loginCredentials = acc.loginCredentials;
+          portalMsg = ` Portal login created — student signs in with: ${loginId}`;
+        } catch (acctErr) {
+          window.showToast("Portal login NOT created: " + acctErr.message, "error");
+          btn.textContent = "Save Changes";
+          btn.disabled = false;
+          return; // abort — don't save half-updated data
+        }
+      }
+    }
+
+    const res = await updateStudentProfile(targetId, updates);
     if (res.success) {
-      window.showToast("Profile updated successfully!", "success");
+      window.showToast(("Profile updated successfully!" + portalMsg).trim(), "success");
       window.closeStudentProfile();
     } else {
       window.showToast("Error: " + res.error, "error");

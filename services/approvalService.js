@@ -19,6 +19,10 @@ export const approveAdmission = async (admissionId) => {
     data.approvalStatus = "Approved";
     data.status = "Active";
     data.updatedAt = new Date().toISOString();
+    // Pending admissions are always written at admissions/{authUid} (student
+    // self-submission) — carry the uid onto the student doc so the portal
+    // card knows a real login account exists.
+    data.uid = admissionId;
 
     // Handle seat assignment if seat was selected
     let assignedSeat = data.seatAssigned || data.seatNumber;
