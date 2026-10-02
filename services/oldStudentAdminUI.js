@@ -54,7 +54,6 @@ export const initOldStudentAdminUI = () => {
           <thead>
             <tr>
               <th>Student Info</th>
-              <th>Last Seat</th>
               <th>Last Plan</th>
               <th>Job Details</th>
               <th>Current Position</th>
@@ -202,7 +201,6 @@ const renderOldStudents = (canRestore) => {
             </div>
           </div>
         </td>
-        <td style="color:var(--text-muted);">${s.seatNumber || "Unassigned"}</td>
         <td style="color:var(--text-muted);">${s.planName || "None"}</td>
         <td style="color:var(--text-muted); font-size: 0.9rem;">${s.jobDetails || "N/A"}</td>
         <td>

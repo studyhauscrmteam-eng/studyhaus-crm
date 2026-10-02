@@ -1,11 +1,11 @@
 import { listenToStudentPortalData, updateStudentOwnProfile } from "./studentPortalService.js";
-import { listenToMyAttendance, checkIn, checkOut } from "./attendanceService.js";
+import { listenToMyAttendance, checkIn, checkOut } from "./attendanceService.js?v=seat1";
 import { calculateStudyHours } from "./studyHourCalculator.js";
 import { generateAttendancePDF } from "./pdfService.js";
 import { listenToMyPayments, submitPaymentRequest } from "./paymentService.js";
-import { listenToMyComplaints, submitComplaint } from "./complaintService.js";
+import { listenToMyComplaints, submitComplaint } from "./complaintService.js?v=ui2";
 import { listenToRenewalHistory } from "./renewalService.js";
-import { getSettings } from "./settingsService.js";
+import { getSettings } from "./settingsService.js?v=ui1";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 
@@ -74,26 +74,8 @@ export const initStudentPortalUI = () => {
   });
 
   window.handleCheckIn = async () => {
-    const isRotational = (currentStudent.planName || "").toLowerCase().includes("rotational");
-
-    // If student has a fixed seat and is not on a rotational plan, check them in directly!
-    if (currentStudent.seatNumber && !isRotational) {
-      const ev = window.event;
-      const btn = ev ? (ev.target.closest ? ev.target.closest('.btn') : null) : null;
-      const originalText = btn ? btn.innerHTML : "Check In";
-      if (btn) { btn.innerHTML = "Processing..."; btn.disabled = true; }
-
-      const res = await checkIn(currentStudent, currentStudent.seatNumber);
-      if (!res.success) {
-        window.showToast((window.t ? window.t('Check-In Failed: ') : "Check-In Failed: ") + res.error, "error");
-      } else {
-        window.showToast(window.t ? window.t('Checked in successfully!') : "Checked in successfully!", "success");
-      }
-
-      if (btn) { btn.innerHTML = originalText; btn.disabled = false; }
-      return;
-    }
-
+    // Seat-first check-in: EVERY student picks the seat they will use —
+    // no auto check-in to an assigned seat, no plan-based shortcuts.
     const modal = document.getElementById("checkin-seat-modal");
     if (!modal) return;
 
@@ -107,8 +89,8 @@ export const initStudentPortalUI = () => {
 
     // Show modal and initialize seat map
     modal.showModal();
-    import("./seatMapUI.js").then(({ initSeatMapUI }) => {
-      initSeatMapUI("signup", "checkin-seat-selection-section");
+    import("./seatMapUI.js?v=ui1").then(({ initSeatMapUI }) => {
+      initSeatMapUI("signup", "checkin-seat-selection-section", { context: "checkin" });
     });
   };
 
@@ -563,7 +545,7 @@ const renderPortal = () => {
       });
     });
 
-    import("./seatMapUI.js").then(({ initSeatMapUI }) => {
+    import("./seatMapUI.js?v=ui1").then(({ initSeatMapUI }) => {
       initSeatMapUI("signup", "seat-selection-section");
     });
 
@@ -1006,13 +988,6 @@ const renderPortal = () => {
           </div>
         </div>
         <div class="metric-card" style="align-items: center;">
-          <div class="metric-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div>
-          <div>
-            <div class="metric-label" data-i18n="studentPortal.seatNum">${window.t ? window.t('studentPortal.seatNum') : 'Seat Number'}</div>
-            <div class="metric-value"><span data-i18n="studentPortal.unassigned" style="display:${s.seatNumber ? 'none' : 'inline'}">Unassigned</span><span style="display:${s.seatNumber ? 'inline' : 'none'}">${s.seatNumber || ''}</span></div>
-          </div>
-        </div>
-        <div class="metric-card" style="align-items: center;">
           <div class="metric-icon emerald"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></div>
           <div>
             <div class="metric-label" data-i18n="studentPortal.status">${window.t ? window.t('studentPortal.status') : 'Status'}</div>
@@ -1057,16 +1032,25 @@ const renderPortal = () => {
       </div>
       
       <!-- Check-In Seat Map Modal -->
-      <dialog id="checkin-seat-modal" class="card" style="border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card); color: var(--text-primary); max-width: 800px; margin: auto;">
-        <div style="padding: 1.5rem; border-bottom: 1px solid var(--borderBright); display: flex; justify-content: space-between; align-items: center;">
-          <h2 style="font-size: 1.1rem; font-weight: 600; margin: 0;">Select Your Seat</h2>
-          <button onclick="document.getElementById('checkin-seat-modal').close()" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+      <dialog id="checkin-seat-modal" class="card" style="border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card); color: var(--text-primary); width:min(860px, calc(100vw - 24px)); max-width:860px; margin:auto;">
+        <div style="padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--borderBright); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h2 style="font-size: 1.05rem; font-weight: 600; margin: 0;">Select Your Seat</h2>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Tap any green or amber seat — you're free to choose where you sit.</div>
+          </div>
+          <button onclick="document.getElementById('checkin-seat-modal').close()" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: var(--text-muted); line-height: 1;">&times;</button>
         </div>
-        <div style="padding: 1.5rem;">
-          <div id="checkin-seat-selection-section" style="margin-bottom: 1rem; border: 1px solid var(--border-bright); border-radius: 12px; padding: 1rem; overflow-y:auto; max-height: 60vh;"></div>
+        <div style="padding: 1.25rem 1.5rem;">
+          <div id="checkin-seat-selection-section" style="border: 1px solid var(--border-bright); border-radius: 12px; padding: 1rem;"></div>
           <input type="hidden" id="selectedSeatNumber" />
           <input type="hidden" id="selectedSeatId" />
-          <button class="btn btn-primary" id="btn-confirm-checkin" onclick="window.confirmCheckIn()" style="width: 100%;">Confirm Check-In</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; margin-top: 1rem; flex-wrap:wrap;">
+            <span style="font-size:12.5px; color:var(--text-muted);">Occupied &amp; maintenance seats can't be picked.</span>
+            <div style="display:flex; gap:0.6rem;">
+              <button class="btn btn-ghost" onclick="document.getElementById('checkin-seat-modal').close()">Cancel</button>
+              <button class="btn btn-primary" id="btn-confirm-checkin" onclick="window.confirmCheckIn()" style="padding:10px 24px;">Confirm Check-In</button>
+            </div>
+          </div>
         </div>
       </dialog>
     `;
@@ -1113,7 +1097,6 @@ const renderPortal = () => {
                 <div>
                   <h4 style="margin: 0; color: #0369a1; font-size: 1.1rem;">${s.name}</h4>
                   <div style="font-size: 0.85rem; color: #0c4a6e; margin-top:2px;">Phone: ${s.phone}</div>
-                  <div style="font-size: 0.85rem; color: #0c4a6e;">Seat: ${s.seatNumber || 'Rotational'}</div>
                 </div>
               </div>
 

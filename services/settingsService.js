@@ -17,7 +17,11 @@ export const getSettings = async () => {
       return {};
     }
   } catch (error) {
-    console.error("Error fetching settings:", error);
+    // Students are not allowed to read settings (rules: staff only) and the
+    // callers already fall back to defaults — don't spam their console.
+    if (error && error.code !== "permission-denied") {
+      console.error("Error fetching settings:", error);
+    }
     return {};
   }
 };

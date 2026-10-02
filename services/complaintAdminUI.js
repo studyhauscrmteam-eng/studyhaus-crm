@@ -1,4 +1,4 @@
-import { listenToAllComplaints, resolveComplaint, updateComplaintStatus } from "./complaintService.js";
+import { listenToAllComplaints, resolveComplaint, updateComplaintStatus } from "./complaintService.js?v=ui2";
 import { filterComplaints } from "./complaintFilter.js";
 
 let allComplaints = [];

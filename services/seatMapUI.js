@@ -67,11 +67,18 @@ const shouldUseABLayout = (seats) => {
   return seats.every(s => AB_SEAT_PATTERN.test(String(s && s.seatNumber)));
 };
 
-export const initSeatMapUI = async (mode, containerId) => {
+// Unsubscribe for the signup/check-in picker's live seat listener — this init
+// runs on every Check-In modal open, so the previous listener must be dropped.
+let signupSeatsUnsub = null;
+
+export const initSeatMapUI = async (mode, containerId, opts = {}) => {
   // ── SIGNUP / SELF-ADMISSION MODE ─────────────────────────────────────────
   if (mode === "signup" && containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    // "checkin" context: the student is choosing where to SIT NOW, so both
+    // green (Available) and amber (Reserved but empty) seats are pickable.
+    const isCheckinContext = !!opts && opts.context === "checkin";
 
     container.innerHTML = `
       <div style="padding: 0.5rem 0 0.75rem;">
@@ -90,11 +97,11 @@ export const initSeatMapUI = async (mode, containerId) => {
         <div style="display:flex; gap:0.75rem; margin-bottom:0.75rem; flex-wrap:wrap;">
           <span style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500;">● Available</span>
           <span style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500;">● Occupied</span>
-          <span style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500;">● Reserved</span>
+          <span style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500;">${isCheckinContext ? "● Reserved — pickable" : "● Reserved"}</span>
           <span style="background:var(--primary); color:#fff; border:1px solid var(--primary); padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;">✓ Selected</span>
         </div>
         <!-- Seat grid -->
-        <div id="signup-seat-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(70px,1fr)); gap:0.6rem; max-height:450px; overflow-y:auto; padding-right:4px;"></div>
+        <div id="signup-seat-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(70px,1fr)); gap:0.6rem; max-height:min(450px, 44vh); overflow-y:auto; padding-right:4px;"></div>
         <div id="signup-selected-label" style="margin-top:0.6rem; font-size:13px; color:var(--text-secondary); min-height:20px;"></div>
       </div>
     `;
@@ -137,11 +144,11 @@ export const initSeatMapUI = async (mode, containerId) => {
         }
 
         const isSelected = seat.id === signupSelectedId;
-        const isPickable = seat.status === "Available";
+        const isPickable = isCheckinContext ? (seat.status === "Available" || seat.status === "Reserved") : seat.status === "Available";
 
         const __pal = seatPalette(seat.status);
         let bg = __pal.bg, border = __pal.border, color = __pal.color, cursor = "not-allowed", opacity = "0.55";
-        if (seat.status === "Available")   { cursor = "pointer"; opacity = "1"; }
+        if (isPickable)   { cursor = "pointer"; opacity = "1"; }
 
         if (isSelected) { bg = "var(--primary)"; border = "2px solid var(--primary)"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
 
@@ -197,11 +204,11 @@ export const initSeatMapUI = async (mode, containerId) => {
 
         let fallbackHtml = sortedSeats.map(seat => {
           const isSelected = seat.id === signupSelectedId;
-          const isPickable = seat.status === "Available";
+          const isPickable = isCheckinContext ? (seat.status === "Available" || seat.status === "Reserved") : seat.status === "Available";
 
           const __pal = seatPalette(seat.status);
           let bg = __pal.bg, border = __pal.border, color = __pal.color, cursor = "not-allowed", opacity = "0.55";
-          if (seat.status === "Available")   { cursor = "pointer"; opacity = "1"; }
+          if (isPickable)   { cursor = "pointer"; opacity = "1"; }
 
           if (isSelected) { bg = "var(--primary)"; border = "2px solid var(--primary)"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
 
@@ -313,7 +320,11 @@ export const initSeatMapUI = async (mode, containerId) => {
 
     window._signupSelectSeat = (seatId, seatNumber, isPickable) => {
       if (!isPickable) {
-        window.showToast && window.showToast("This seat is not available. Please choose a green (Available) seat.", "warning");
+        window.showToast && window.showToast(
+        isCheckinContext
+          ? "This seat can't be taken right now. Choose a free seat — green (Available) or amber (Reserved)."
+          : "This seat is not available. Please choose a green (Available) seat.",
+        "warning");
         return;
       }
       signupSelectedId = seatId;
@@ -326,8 +337,10 @@ export const initSeatMapUI = async (mode, containerId) => {
       renderSignupSeats();
     };
 
-    // Listen for live seat updates
-    listenToAllSeats((records) => {
+    // Listen for live seat updates — unsubscribe the previous picker's
+    // listener first (this init runs on every Check-In modal open).
+    if (signupSeatsUnsub) { try { signupSeatsUnsub(); } catch (_) {} }
+    signupSeatsUnsub = listenToAllSeats((records) => {
       signupAllSeats = records;
       renderSignupSeats();
     });

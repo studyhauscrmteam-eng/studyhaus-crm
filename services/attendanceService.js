@@ -17,10 +17,13 @@ const getTodayStr = () => {
 const validateCheckIn = async (student, selectedSeatNumber) => {
   if (student.status !== "Active") throw new Error("Membership is not active.");
   
-  const isRotational = (student.planName || "").toLowerCase().includes("rotational");
-  const finalSeat = isRotational ? selectedSeatNumber : student.seatNumber;
+  // Seat-first check-in: the seat the student CHOSE wins for every plan.
+  // Falls back to the assigned seat only when nothing was selected (desk flow).
+  const chosenSeat = selectedSeatNumber ? String(selectedSeatNumber).trim() : "";
+  const assignedSeat = student.seatNumber ? String(student.seatNumber).trim() : "";
+  const finalSeat = chosenSeat || assignedSeat;
 
-  if (!finalSeat || finalSeat.trim() === "") throw new Error("No seat assigned or selected.");
+  if (!finalSeat) throw new Error("Select a seat to check in.");
 
   // Night Study check (7 PM to 7 AM)
   const isNightPlan = (student.planName || "").toLowerCase().includes("night");
@@ -93,13 +96,10 @@ export const checkIn = async (student, selectedSeatNumber = null) => {
     const seatDoc = seatSnap.docs[0];
     const seatData = seatDoc.data();
     
-    if (seatData.status === "Occupied" && seatData.assignedStudentId !== student.id) throw new Error("Seat is already occupied.");
+    if (seatData.status === "Occupied") throw new Error("Seat is already occupied.");
     if (seatData.status === "Maintenance" || seatData.status === "Inactive") throw new Error("Seat is not usable.");
-    
-    // For fixed, check if it belongs to them (unless they are rotational choosing a general seat)
-    if (seatData.status === "Reserved" && seatData.assignedStudentId !== student.id) {
-      throw new Error("This seat is reserved for someone else.");
-    }
+    // Reserved seats are freely pickable — first come, first served. The
+    // assignment only decides which status the seat reverts to on check-out.
 
     const batch = writeBatch(db);
     const now = new Date();

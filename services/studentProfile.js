@@ -186,7 +186,6 @@ const renderTable = () => {
             </div>
           </div>
         </td>
-        <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${s.seatNumber || "Unassigned"}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; max-width: 180px; white-space: normal; word-wrap: break-word;">${planHtml}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${s.createdAt?.toDate ? new Date(s.createdAt.toDate()).toLocaleDateString() : 'N/A'}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${s.paymentDueDate || "N/A"}</td>
@@ -242,7 +241,7 @@ const renderProfileModal = (s, role) => {
   const isManager = role === "Manager";
   const canEdit = isOwner || isManager;
   
-  // Manager cannot edit Plan, Seat, or Status
+  // Manager cannot edit Plan or Status
   const readOnlyForManager = isManager ? "disabled" : "";
   const hideForEmployee = !canEdit ? "display:none;" : "";
 
@@ -440,10 +439,6 @@ const renderProfileModal = (s, role) => {
               </select>
             </div>
             <div class="form-group">
-              <label>Seat Number ${isManager ? '(Locked)' : ''}</label>
-              <input type="text" id="edit-seat" value="${s.seatNumber || ''}" ${!canEdit || readOnlyForManager ? 'disabled' : ''} />
-            </div>
-            <div class="form-group">
               <label>Status ${isManager ? '(Locked)' : ''}</label>
               <select id="edit-status" ${!canEdit || readOnlyForManager ? 'disabled' : ''}>
                 <option value="Active" ${s.status === 'Active' ? 'selected' : ''}>Active</option>
@@ -547,7 +542,6 @@ window.submitStudentEdit = async (id) => {
       // The following are disabled for Managers, so if disabled, they don't change in the DOM but we grab the value anyway (it hasn't changed)
       planId: planEl.value,
       planName: planEl.options[planEl.selectedIndex]?.text || "",
-      seatNumber: document.getElementById("edit-seat").value,
       status: document.getElementById("edit-status").value,
       plannedExitDate: document.getElementById("edit-leaving-date").value,
       remarks: document.getElementById("edit-remarks").value

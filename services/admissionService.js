@@ -480,7 +480,7 @@ export const initAdmissionsUI = async () => {
       document.getElementById("admin-payment-modal").showModal();
       
       // Fetch dynamic QR code
-      import("./settingsService.js").then(({ getSettings }) => {
+      import("./settingsService.js?v=ui1").then(({ getSettings }) => {
         getSettings().then(settings => {
           if (settings.qrCodeUrl) {
             document.querySelectorAll('.payment-qr-img').forEach(img => {

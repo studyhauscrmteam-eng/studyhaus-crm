@@ -4,18 +4,18 @@ import { enforceModulePermissions } from "./auth/middleware.js";
 import { handleLogout } from "./auth/logout.js";
 import { initDashboardListeners } from "./services/dashboardService.js";
 import { initMembershipPlans } from "./services/membershipService.js";
-import { initAdmissionsUI } from "./services/admissionService.js?v=login5";
-import { initStudentManagementUI } from "./services/studentProfile.js?v=login8";
-import { initStudentPortalUI } from "./services/studentPortalUI.js";
-import { initAttendanceAdminUI } from "./services/attendanceAdminUI.js";
+import { initAdmissionsUI } from "./services/admissionService.js?v=ui1";
+import { initStudentManagementUI } from "./services/studentProfile.js?v=ui2";
+import { initStudentPortalUI } from "./services/studentPortalUI.js?v=ui2";
+import { initAttendanceAdminUI } from "./services/attendanceAdminUI.js?v=seat1";
 import { initPaymentAdminUI } from "./services/paymentAdminUI.js";
-import { initComplaintAdminUI } from "./services/complaintAdminUI.js";
-import { initSeatMapUI } from "./services/seatMapUI.js?v=play3";
+import { initComplaintAdminUI } from "./services/complaintAdminUI.js?v=ui2";
+import { initSeatMapUI } from "./services/seatMapUI.js?v=ui1";
 import { initLiveSeatMapUI } from "./services/liveSeatMapUI.js?v=play3";
 import { initExpenseAdminUI } from "./services/expenseAdminUI.js";
 import { initVisitorAdminUI } from "./services/visitorAdminUI.js";
 import { initMessageLogAdminUI } from "./services/messageLogAdminUI.js";
-import { initOldStudentAdminUI } from "./services/oldStudentAdminUI.js";
+import { initOldStudentAdminUI } from "./services/oldStudentAdminUI.js?v=ui2";
 import { initDashboardReminders } from "./services/dashboardReminderUI.js";
 import { initRenewalAdminUI, renderRenewalForm, renderRenewalHistory } from "./services/renewalAdminUI.js";
 import { websiteAdminUI } from "./services/websiteAdminUI.js";
@@ -24,7 +24,7 @@ import { initAnalyticsUI } from "./services/analyticsService.js";
 import { initAnnouncementAdminUI } from "./services/announcementAdminUI.js";
 import { initStaffAdminUI } from "./services/staffAdminUI.js";
 import { initTasksAdminUI } from "./services/tasksAdminUI.js";
-import { initSettingsAdminUI } from "./services/settingsAdminUI.js";
+import { initSettingsAdminUI } from "./services/settingsAdminUI.js?v=ui1";
 import "./services/translationService.js";
 import "./services/whatsappModalUI.js"; // Auto-injects modal styles and functions
 
@@ -106,6 +106,13 @@ const initCrmModules = () => {
   const role = localStorage.getItem("userRole");
   if (!role) return;
   enforceModulePermissions(role);
+
+  // Student Portal ONLY. Every other module reads staff-only collections
+  // (settings, website, payments, expenses…) — running them under a student
+  // session just floods the console with permission-denied errors.
+  initStudentPortalUI();
+  if (role === "Student") return;
+
     // Initialize real-time dashboard listeners if we're on the dashboard
     initDashboardListeners();
     // Initialize the new unified Dashboard Reminders
@@ -116,8 +123,6 @@ const initCrmModules = () => {
     initAdmissionsUI();
     // Initialize student management flow
     initStudentManagementUI();
-    // Initialize student portal
-    initStudentPortalUI();
     // Initialize attendance admin viewer
     initAttendanceAdminUI();
     // Initialize payment admin viewer

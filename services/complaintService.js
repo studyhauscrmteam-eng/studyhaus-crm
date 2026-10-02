@@ -1,4 +1,4 @@
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, getDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 import { validateComplaint } from "./complaintValidation.js";
 
@@ -9,12 +9,22 @@ import { validateComplaint } from "./complaintValidation.js";
 export const submitComplaint = async (student, category, description) => {
   try {
     validateComplaint(category, description);
-    
+
+    // Seat the student is sitting in RIGHT NOW (the one they chose at
+    // check-in today). Never falls back to an old assigned seat.
+    let seatNumber = "";
+    try {
+      const activeQ = query(collection(db, "attendance"),
+        where("studentId", "==", student.id), where("checkOut", "==", null));
+      const activeSnap = await getDocs(activeQ);
+      if (!activeSnap.empty) seatNumber = activeSnap.docs[0].data().seatNumber || "";
+    } catch (_) { /* seat is optional context on a complaint */ }
+
     await addDoc(collection(db, "complaints"), {
       studentId: student.id,
       studentName: student.name,
       studentPhone: student.phone || "",
-      seatNumber: student.seatNumber || "Unassigned",
+      seatNumber: seatNumber,
       planName: student.planName || "Unknown",
       category: category,
       description: description.trim(),
