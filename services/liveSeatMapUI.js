@@ -53,6 +53,25 @@ const shouldUseABLayout = (seats) => {
   return seats.every(s => AB_SEAT_PATTERN.test(String(s && s.seatNumber)));
 };
 
+// Rule 1 — normalize seat names before matching (DB "A01" vs layout "A1")
+const normalizeSeatNumber = (value) => {
+  const raw = String(value == null ? "" : value).trim().toUpperCase().replace(/\s+/g, "");
+  const m = raw.match(/^([A-Z]+)-?0*(\d+)$/);
+  return m ? `${m[1]}${Number(m[2])}` : raw;
+};
+
+// Status colors for seats that are NOT currently present — mirrors the seat
+// map palette so Maintenance/Reserved/Reserved changes show up live here too.
+const liveStatusStyle = (status) => {
+  switch (status) {
+    case "Occupied":    return { bg: "#fef2f2", border: "1.5px solid #fecaca", color: "#991b1b" };
+    case "Reserved":    return { bg: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" };
+    case "Maintenance": return { bg: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af" };
+    case "Inactive":    return { bg: "#f8fafc", border: "1px dashed #cbd5e1", color: "#94a3b8" };
+    default:            return { bg: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" };
+  }
+};
+
 const fetchMissingPhotos = async (records) => {
   for (const rec of records) {
     if (studentPhotos[rec.studentId] === undefined) {
@@ -112,6 +131,14 @@ export const initLiveSeatMapInTab = (containerId) => {
       <span class="legend-pill" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
         <span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
         <span data-i18n="liveSeat.present">Present</span>
+      </span>
+      <span class="legend-pill" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
+        Reserved
+      </span>
+      <span class="legend-pill" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
+        Maintenance
       </span>
     </div>
 
@@ -214,20 +241,11 @@ const renderLiveMap = () => {
   const subtitle = document.getElementById("live-subtitle");
   if (subtitle) subtitle.innerText = `${presentCount} present · live`;
 
-  // ── Single seat card — bigger cards matching image design ──
-  const renderSeatCard = (seatNumStr) => {
-    const seatExists = allSeats.some(s => s.seatNumber === String(seatNumStr));
-
-    if (!seatExists) {
-      return `
-        <div style="background:var(--bg-hover); border:1px dashed #cbd5e1; border-radius:10px; height:70px; display:grid; place-items:center; color:var(--text-muted); font-size:13px;">
-          ${seatNumStr}
-        </div>
-      `;
-    }
-
-
-    const att = activeAttendance.find(a => a.seatNumber === String(seatNumStr));
+  // ── Single seat card — attendance wins, else live seat status shows ──
+  const renderSeatCard = (seat) => {
+    const seatNumStr = seat.seatNumber;
+    const att = activeAttendance.find(a =>
+      normalizeSeatNumber(a.seatNumber) === normalizeSeatNumber(seatNumStr));
 
     if (att) {
       // PRESENT — show photo or colored initial avatar
@@ -279,54 +297,38 @@ const renderLiveMap = () => {
           ${checkInTime ? `<div style="position:absolute; bottom:4px; right:4px; font-size:8px; color:#dc2626; font-weight:500;">${checkInTime}</div>` : ''}
         </div>
       `;
-    } else {
-      // VACANT — clean green card, number perfectly centered
-      return `
-        <div style="background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; border-radius:10px;
-                    width:100%; height:70px; box-sizing:border-box;
-                    display:grid; place-items:center; cursor:default;">
-          <div style="font-size:15px; font-weight:600;">${seatNumStr}</div>
-        </div>
-      `;
     }
 
-
-
+    // NOT PRESENT — paint the seat's live status (Available/Occupied/
+    // Reserved/Maintenance/Inactive) so status changes reflect here instantly.
+    const st = liveStatusStyle(seat.status);
+    const sub = seat.assignedStudentName
+      ? `<div style="font-size:9px; font-weight:600; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1; text-align:center;" title="${seat.assignedStudentName}">${String(seat.assignedStudentName).split(' ')[0]}</div>`
+      : "";
+    const statusTag = (seat.status !== "Available")
+      ? `<div style="position:absolute; top:4px; left:4px; font-size:8px; font-weight:700; line-height:1; opacity:0.8;">${seat.status}</div>`
+      : "";
+    return `
+      <div style="background:${st.bg}; border:${st.border}; color:${st.color}; border-radius:10px;
+                  width:100%; height:70px; box-sizing:border-box;
+                  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+                  cursor:default; padding:4px; position:relative; overflow:hidden;"
+           title="${seatNumStr} · ${seat.status}${seat.assignedStudentName ? ' · ' + seat.assignedStudentName : ''}">
+        ${statusTag}
+        <div style="font-size:15px; font-weight:600; line-height:1; margin-top:${sub ? "6px" : "0"};">${seatNumStr}</div>
+        ${sub}
+      </div>
+    `;
   };
 
-
-  const renderCustomColHtml = (arr) => {
-    let html = `<div style="display:flex; flex-direction:column; gap:0.5rem; flex:1; min-width:0;">`;
-    arr.forEach(n => { 
-      if (n === null) {
-        html += `<div style="height:70px; width:100%;"></div>`;
-      } else {
-        html += renderSeatCard(n); 
-      }
-    });
-    html += `</div>`;
-    return html;
-  };
-
-  const groundCol1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(n => 'A' + n);
-  const groundCol2 = [null, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 67, 23, 22, 21, 20, 19].map(n => n ? 'A' + n : null);
-  const groundCol3 = [null, 35, 36, null, 37, 38, 39, 40, 41, 42, null, 43, 68, 44, 45, 46, 47, 48].map(n => n ? 'A' + n : null);
-  const groundCol4 = [66, 65, 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49].map(n => 'A' + n);
-
-  const firstCol1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, null].map(n => n ? 'B' + n : null);
-  const firstCol2 = [null, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11].map(n => n ? 'B' + n : null);
-  const firstCol3 = [null, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => n ? 'B' + n : null);
-  const firstCol4 = [40, 39, 38, 37, 36, 35, 34, 33, 32, 31, null].map(n => n ? 'B' + n : null);
-
-  // ── Generic grid for non-A/B floors ─────────────────────────────────────
-  // Imported floors ("2".."40", "R1".."R20") don't match the hardcoded room
-  // columns, so paint every seat of the current floor in natural order using
-  // the SAME card renderer (occupancy join with `attendance` is unchanged).
+  // ── Data-driven room: seat positions come from backend col/row ───────────
   const floorSeats = allSeats.filter(s => (s.floor || "Ground Floor") === currentFloor);
+
+  // Generic grid for non-A/B floors
   if (!shouldUseABLayout(floorSeats)) {
     const sortedSeats = [...floorSeats].sort((a, b) =>
       compareSeatNumbers(a.seatNumber, b.seatNumber));
-    const genericHtml = sortedSeats.map(seat => renderSeatCard(seat.seatNumber)).join("");
+    const genericHtml = sortedSeats.map(seat => renderSeatCard(seat)).join("");
     grid.style.display = "grid";
     grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(70px,1fr))";
     grid.style.gap = "0.6rem";
@@ -334,17 +336,75 @@ const renderLiveMap = () => {
     return;
   }
 
-  let html = '';
+  const posMap = new Map();
+  const place = (seat) => {
+    const c = Number(seat.col), r = Number(seat.row);
+    if (Number.isFinite(c) && Number.isFinite(r) && c >= 1 && c <= 4 && r >= 1) {
+      const key = `${c}x${r}`;
+      if (!posMap.has(key)) { posMap.set(key, seat); return true; }
+      return false;
+    }
+    return false;
+  };
+
+  // Inference from the spec layout for docs that predate col/row.
+  const groundSpec = [
+    [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+    [null,34,33,32,31,30,29,28,27,26,25,24,67,23,22,21,20,19],
+    [null,35,36,null,37,38,39,40,41,42,null,43,68,44,45,46,47,48],
+    [66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49],
+  ];
+  const firstSpec = [
+    [1,2,3,4,5,6,7,8,9,10,null],
+    [null,20,19,18,17,16,15,14,13,12,11],
+    [null,21,22,23,24,25,26,27,28,29,30],
+    [40,39,38,37,36,35,34,33,32,31,null],
+  ];
+  const specCols = currentFloor === "First Floor" ? firstSpec : groundSpec;
+  const specName = (n) => (currentFloor === "First Floor" ? "B" : "A") + n;
+
+  floorSeats.forEach(seat => {
+    if (place(seat)) return;
+    const norm = normalizeSeatNumber(seat.seatNumber);
+    specCols.forEach((colArr, ci) => {
+      colArr.forEach((n, ri) => {
+        if (n != null && normalizeSeatNumber(specName(n)) === norm && !posMap.has(`${ci + 1}x${ri + 1}`)) {
+          posMap.set(`${ci + 1}x${ri + 1}`, seat);
+        }
+      });
+    });
+  });
+
+  const baseRows = currentFloor === "First Floor" ? 11 : 18;
+  let maxRow = baseRows;
+  posMap.forEach(seat => { if (Number(seat.row) > maxRow) maxRow = Number(seat.row); });
+
+  const renderCell = (col, row) => {
+    const seat = posMap.get(`${col}x${row}`);
+    if (seat) return renderSeatCard(seat);
+    return `<div style="height:70px; width:100%;"></div>`;
+  };
+  const renderColByPosition = (colIdx) => {
+    let html = `<div style="display:flex; flex-direction:column; gap:0.5rem; flex:1; min-width:0;">`;
+    for (let r = 1; r <= maxRow; r++) html += renderCell(colIdx, r);
+    html += `</div>`;
+    return html;
+  };
+
+  const colsHtml = renderColByPosition(1) + renderColByPosition(2) + renderColByPosition(3) + renderColByPosition(4);
+
+  // Clear inline grid styles possibly left behind by a non-A/B (generic) floor
+  // so the room layout keeps its original block layout.
+  grid.style.display = "";
+  grid.style.gridTemplateColumns = "";
+  grid.style.gap = "";
 
   if (currentFloor === 'First Floor') {
-    html = `
+    grid.innerHTML = `
       <div style="background:var(--bg-card); padding:2rem 1rem 4rem 1rem; border-radius:12px; position:relative; border:1px solid var(--border); min-width:800px; overflow-x:auto;">
         <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top:none; padding:0.25rem 1.5rem; border-radius:0 0 8px 8px; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">DOOR</div>
         <div style="display:flex; gap:1.5rem; justify-content:center; max-width:800px; margin:0 auto; align-items:flex-start;">
-          ${renderCustomColHtml(firstCol1)}
-          ${renderCustomColHtml(firstCol2)}
-          ${renderCustomColHtml(firstCol3)}
-          ${renderCustomColHtml(firstCol4)}
+          ${colsHtml}
         </div>
         <div style="position:absolute; bottom:0; left:0; right:0; display:flex; justify-content:space-around; pointer-events:none;">
           <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">TOILET-1</div>
@@ -353,14 +413,11 @@ const renderLiveMap = () => {
       </div>
     `;
   } else {
-    html = `
+    grid.innerHTML = `
       <div style="background:var(--bg-card); padding:2rem 1rem 4rem 1rem; border-radius:12px; position:relative; border:1px solid var(--border); min-width:900px; overflow-x:auto;">
         <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top:none; padding:0.25rem 1.5rem; border-radius:0 0 8px 8px; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">DOOR</div>
         <div style="display:flex; gap:1.5rem; justify-content:center; max-width:900px; margin:0 auto; align-items:flex-start;">
-          ${renderCustomColHtml(groundCol1)}
-          ${renderCustomColHtml(groundCol2)}
-          ${renderCustomColHtml(groundCol3)}
-          ${renderCustomColHtml(groundCol4)}
+          ${colsHtml}
         </div>
         <div style="position:absolute; bottom:0; left:0; right:0; display:flex; justify-content:space-around; pointer-events:none;">
           <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom:none; padding:0.25rem 1.5rem; border-radius:8px 8px 0 0; font-weight:700; color:var(--text-secondary); letter-spacing:1px; font-size:11px;">TOILET-1</div>
@@ -369,12 +426,4 @@ const renderLiveMap = () => {
       </div>
     `;
   }
-
-  // Clear inline grid styles possibly left behind by a non-A/B (generic) floor
-  // so the hardcoded room layout keeps its original block layout.
-  grid.style.display = "";
-  grid.style.gridTemplateColumns = "";
-  grid.style.gap = "";
-
-  grid.innerHTML = html;
 };

@@ -1,4 +1,4 @@
-import { collection, query, onSnapshot, addDoc, getDocs, doc, updateDoc, getDoc, serverTimestamp, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, addDoc, getDocs, doc, updateDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, orderBy } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 import { validateSeatAssignment } from "./seatValidation.js";
 
@@ -6,23 +6,59 @@ import { validateSeatAssignment } from "./seatValidation.js";
 // SEAT INITIALIZATION & LISTENERS
 // ===============================================
 
+// ── Library room plan: exact spec positions (col 1-4, row 1-based) ──────────
+// Ground Floor 4 cols × 18 rows (A1-A68), First Floor 4 cols × 11 rows (B1-B40).
+// Used to seed col/row so the map is data-driven but looks identical.
+const GROUND_COLS_RAW = [
+  [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+  [null,34,33,32,31,30,29,28,27,26,25,24,67,23,22,21,20,19],
+  [null,35,36,null,37,38,39,40,41,42,null,43,68,44,45,46,47,48],
+  [66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49],
+];
+const FIRST_COLS_RAW = [
+  [1,2,3,4,5,6,7,8,9,10,null],
+  [null,20,19,18,17,16,15,14,13,12,11],
+  [null,21,22,23,24,25,26,27,28,29,30],
+  [40,39,38,37,36,35,34,33,32,31,null],
+];
+
+const PLAN_POSITION = (() => {
+  const m = new Map();
+  GROUND_COLS_RAW.forEach((colArr, ci) => {
+    colArr.forEach((n, ri) => {
+      if (n == null) return;
+      m.set(`A${n}`, { floor: "Ground Floor", col: ci + 1, row: ri + 1 });
+    });
+  });
+  FIRST_COLS_RAW.forEach((colArr, ci) => {
+    colArr.forEach((n, ri) => {
+      if (n == null) return;
+      m.set(`B${n}`, { floor: "First Floor", col: ci + 1, row: ri + 1 });
+    });
+  });
+  return m;
+})();
+
 export const seedInitialSeats = async () => {
   const seatsRef = collection(db, "seats");
   const snap = await getDocs(seatsRef);
-  
+
   if (snap.empty) {
-    console.log("Seeding initial 50 seats per floor...");
-    const floors = [
-      { prefix: 'A', name: 'Ground Floor' },
-      { prefix: 'B', name: 'First Floor' }
+    console.log("Seeding library seat plan: A1-A68 Ground Floor, B1-B40 First Floor...");
+    const plan = [
+      { prefix: 'A', count: 68, floor: 'Ground Floor' },
+      { prefix: 'B', count: 40, floor: 'First Floor' }
     ];
 
-    for (const floor of floors) {
-      for (let i = 0; i <= 50; i++) {
-        const numStr = i < 10 ? `0${i}` : `${i}`;
+    for (const { prefix, count, floor } of plan) {
+      for (let i = 1; i <= count; i++) {
+        const name = `${prefix}${i}`;
+        const pos = PLAN_POSITION.get(name) || {};
         await addDoc(seatsRef, {
-          seatNumber: `${floor.prefix}${numStr}`,
-          floor: floor.name,
+          seatNumber: name,
+          floor,
+          col: pos.col ?? null,
+          row: pos.row ?? null,
           status: "Available",
           assignedStudentId: null,
           assignedStudentName: null,
@@ -34,23 +70,236 @@ export const seedInitialSeats = async () => {
   }
 };
 
-export const addSingleSeat = async (seatNumber, floor = "Ground Floor") => {
+// "A01" -> "A1" (same matching the seat map uses)
+const normalizePlanName = (value) => {
+  const raw = String(value == null ? "" : value).trim().toUpperCase().replace(/\s+/g, "");
+  const m = raw.match(/^([A-Z]+)-?0*(\d+)$/);
+  return m ? `${m[1]}${Number(m[2])}` : raw;
+};
+
+const PLAN_SEAT_NAMES = (() => {
+  const names = new Set();
+  for (let i = 1; i <= 68; i++) names.add(`A${i}`);
+  for (let i = 1; i <= 40; i++) names.add(`B${i}`);
+  return names;
+})();
+
+// One-time backend fix: rebuild EVERYTHING to match the library map.
+// Deletes all seats, recreates A1-A68 (Ground) + B1-B40 (First) as Available.
+// Student seats that fit the plan are kept (renamed to plan form, e.g. A01 -> A1);
+// old seats that fit nowhere are cleared. Old attendance history is untouched.
+// Run once from the browser console while logged in as staff:
+//   await window.rebuildSeatPlan()
+export const rebuildSeatPlan = async () => {
+  if (!window.confirm("Rebuild the seat map backend?\n\nALL seats will be deleted and recreated as A1-A68 (Ground Floor) + B1-B40 (First Floor).\n\nStudent seats that fit the plan are kept (renamed to plan form). Old seats that fit nowhere are cleared.")) {
+    return { success: false, error: "cancelled" };
+  }
+
+  const seatsRef = collection(db, "seats");
+  const existing = await getDocs(seatsRef);
+  await Promise.all(existing.docs.map(d => deleteDoc(doc(db, "seats", d.id))));
+
+  for (const target of [{ prefix: "A", count: 68, floor: "Ground Floor" }, { prefix: "B", count: 40, floor: "First Floor" }]) {
+    for (let i = 1; i <= target.count; i++) {
+      const name = `${target.prefix}${i}`;
+      const pos = PLAN_POSITION.get(name) || {};
+      await addDoc(seatsRef, {
+        seatNumber: name,
+        floor: target.floor,
+        col: pos.col ?? null,
+        row: pos.row ?? null,
+        status: "Available",
+        assignedStudentId: null,
+        assignedStudentName: null,
+        planType: null,
+        lastUpdated: serverTimestamp()
+      });
+    }
+  }
+
+  const studentsSnap = await getDocs(collection(db, "students"));
+  const batch = writeBatch(db);
+  let kept = 0, cleared = 0;
+  studentsSnap.forEach(stu => {
+    const current = stu.data().seatNumber;
+    if (!current) return;
+    const normed = normalizePlanName(current);
+    if (PLAN_SEAT_NAMES.has(normed)) {
+      if (current !== normed) batch.update(stu.ref, { seatNumber: normed });
+      kept++;
+    } else {
+      batch.update(stu.ref, { seatNumber: null });
+      cleared++;
+    }
+  });
+  await batch.commit();
+
+  return { success: true, kept, cleared };
+};
+
+if (typeof window !== "undefined") window.rebuildSeatPlan = rebuildSeatPlan;
+
+// Automatic backend reconcile: the map is a real playground, so the backend
+// must hold EXACTLY the library plan. On every admin map open:
+//  1. deletes seats that are NOT part of the plan ("2","3","4"… / R-names / dupes)
+//  2. renames padded names to plan form ("A01" -> "A1")
+//  3. creates any missing plan seats (A1-A68 + B1-B40) as Available at their
+//     spec col/row — this kills the dashed "click-to-create" tiles forever
+//  4. backfills col/row on plan seats that lack correct positions
+// Student seat refs are fixed the same way (kept+renamed when fitting, cleared
+// when not). Safe to run on every admin map open — no-ops once clean.
+export const cleanupNonPlanSeats = async () => {
   try {
     const seatsRef = collection(db, "seats");
-    await addDoc(seatsRef, {
-      seatNumber,
-      floor,
+    const snap = await getDocs(seatsRef);
+    if (snap.empty) return { success: true, deleted: 0, renamed: 0, created: 0, positioned: 0, clearedStudents: 0, fixedStudents: 0 };
+
+    const exactNames = new Set();
+    snap.forEach(d => { const n = d.data() && d.data().seatNumber; if (n) exactNames.add(n); });
+
+    const toDeleteRefs = [];
+    const renames = [];
+    snap.forEach(d => {
+      const name = d.data() && d.data().seatNumber;
+      if (!name) { toDeleteRefs.push(d.ref); return; }
+      const n = normalizePlanName(name);
+      if (!PLAN_SEAT_NAMES.has(n)) { toDeleteRefs.push(d.ref); return; }
+      if (name !== n) {
+        if (exactNames.has(n)) { toDeleteRefs.push(d.ref); }
+        else { renames.push({ ref: d.ref, to: n }); exactNames.add(n); }
+      }
+    });
+
+    await Promise.all(toDeleteRefs.map(r => deleteDoc(r)));
+    await Promise.all(renames.map(r => updateDoc(r.ref, { seatNumber: r.to, lastUpdated: serverTimestamp() })));
+
+    // Re-read survivors, then create missing plan seats + fix positions.
+    const afterSnap = await getDocs(seatsRef);
+    const present = new Set();
+    const posFixes = [];
+    afterSnap.forEach(d => {
+      const data = d.data() || {};
+      const n = normalizePlanName(data.seatNumber);
+      if (PLAN_SEAT_NAMES.has(n)) {
+        present.add(n);
+        const want = PLAN_POSITION.get(n);
+        if (want && (data.col !== want.col || data.row !== want.row || (data.floor || "Ground Floor") !== want.floor)) {
+          posFixes.push({ ref: d.ref, want });
+        }
+      }
+    });
+
+    let created = 0;
+    const missing = [...PLAN_SEAT_NAMES].filter(n => !present.has(n));
+    await Promise.all(missing.map(async (n) => {
+      const want = PLAN_POSITION.get(n) || {};
+      await addDoc(seatsRef, {
+        seatNumber: n,
+        floor: want.floor || (String(n).startsWith("B") ? "First Floor" : "Ground Floor"),
+        col: want.col ?? null,
+        row: want.row ?? null,
+        status: "Available",
+        assignedStudentId: null,
+        assignedStudentName: null,
+        planType: null,
+        lastUpdated: serverTimestamp()
+      });
+      created++;
+    }));
+    await Promise.all(posFixes.map(p => updateDoc(p.ref, {
+      col: p.want.col, row: p.want.row, floor: p.want.floor, lastUpdated: serverTimestamp()
+    })));
+
+    const studentsSnap = await getDocs(collection(db, "students"));
+    const batch = writeBatch(db);
+    let clearedStudents = 0, fixedStudents = 0;
+    studentsSnap.forEach(stu => {
+      const current = stu.data().seatNumber;
+      if (!current) return;
+      const n = normalizePlanName(current);
+      if (!PLAN_SEAT_NAMES.has(n)) { batch.update(stu.ref, { seatNumber: null }); clearedStudents++; }
+      else if (current !== n) { batch.update(stu.ref, { seatNumber: n }); fixedStudents++; }
+    });
+    await batch.commit();
+
+    return { success: true, deleted: toDeleteRefs.length, renamed: renames.length, created, positioned: posFixes.length, clearedStudents, fixedStudents };
+  } catch (e) {
+    console.warn("cleanupNonPlanSeats skipped:", e);
+    return { success: false, error: e.message };
+  }
+};
+
+// ── Playground operations: seats are real backend docs with col/row ─────────
+export const saveSeatPosition = async (seatId, col, row) => {
+  try {
+    await updateDoc(doc(db, "seats", seatId), { col, row, lastUpdated: serverTimestamp() });
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+};
+
+export const renameSeat = async (seatId, newNumber) => {
+  try {
+    const normed = normalizePlanName(newNumber);
+    if (!/^[AB]\d+$/.test(normed)) throw new Error("Seat number must look like A12 or B7.");
+    const seatsSnap = await getDocs(collection(db, "seats"));
+    let clash = false;
+    seatsSnap.forEach(d => {
+      if (d.id !== seatId && normalizePlanName(d.data().seatNumber) === normed) clash = true;
+    });
+    if (clash) throw new Error(`Seat ${normed} already exists.`);
+    const seatRef = doc(db, "seats", seatId);
+    const snap = await getDoc(seatRef);
+    if (!snap.exists()) throw new Error("Seat not found.");
+    await updateDoc(seatRef, { seatNumber: normed, lastUpdated: serverTimestamp() });
+    const data = snap.data();
+    if (data.assignedStudentId) {
+      try { await updateDoc(doc(db, "students", data.assignedStudentId), { seatNumber: normed }); } catch (_) {}
+    }
+    return { success: true, seatNumber: normed };
+  } catch (e) { return { success: false, error: e.message }; }
+};
+
+export const addSeatAt = async (floor, col, row) => {
+  try {
+    const seatsSnap = await getDocs(collection(db, "seats"));
+    let occupied = false, maxNum = 0;
+    const prefix = floor === "First Floor" ? "B" : "A";
+    seatsSnap.forEach(d => {
+      const s = d.data() || {};
+      if ((s.floor || "Ground Floor") === floor && Number(s.col) === Number(col) && Number(s.row) === Number(row)) occupied = true;
+      const n = normalizePlanName(s.seatNumber);
+      if (n.startsWith(prefix)) { const num = Number(n.slice(prefix.length)); if (Number.isFinite(num) && num > maxNum) maxNum = num; }
+    });
+    if (occupied) throw new Error("That cell is already occupied.");
+    const seatNumber = `${prefix}${maxNum + 1}`;
+    await addDoc(collection(db, "seats"), {
+      seatNumber, floor, col, row,
       status: "Available",
       assignedStudentId: null,
       assignedStudentName: null,
       planType: null,
       lastUpdated: serverTimestamp()
     });
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+    return { success: true, seatNumber };
+  } catch (e) { return { success: false, error: e.message }; }
 };
+
+export const deleteSeatById = async (seatId) => {
+  try {
+    const seatRef = doc(db, "seats", seatId);
+    const snap = await getDoc(seatRef);
+    if (!snap.exists()) throw new Error("Seat not found.");
+    const data = snap.data();
+    if (data.assignedStudentId) {
+      try { await updateDoc(doc(db, "students", data.assignedStudentId), { seatNumber: null }); } catch (_) {}
+    }
+    await deleteDoc(seatRef);
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+};
+
+// NOTE: seat creation from the map UI is handled by addSeatAt (edit-layout
+// mode, cell-anchored). The free-floating addSingleSeat helper is removed.
 
 export const listenToAllSeats = (onUpdate) => {
   const q = query(collection(db, "seats"), orderBy("seatNumber"));

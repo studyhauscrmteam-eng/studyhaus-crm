@@ -1,11 +1,13 @@
-import { listenToAllSeats, assignSeat, unassignSeat, changeSeatStatus, seedInitialSeats, addSingleSeat } from "./seatService.js";
+import { listenToAllSeats, assignSeat, unassignSeat, changeSeatStatus, seedInitialSeats, cleanupNonPlanSeats, saveSeatPosition, renameSeat, addSeatAt, deleteSeatById } from "./seatService.js?v=play3";
 import { getDocs, collection, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
-import { initLiveSeatMapInTab } from "./liveSeatMapUI.js";
 
 let allSeats = [];
 let unsubscribe = null;
 let currentFilters = { status: "All", search: "", floor: "Ground Floor" };
+// Playground: admin "Edit layout" mode — drag/rename/add/delete seats.
+let layoutEditMode = false;
+let dragSeatId = null;
 
 // ── Seat naming helpers ─────────────────────────────────────────────────────
 // The physical room layouts below are hardcoded for seats named A1..A68
@@ -22,6 +24,37 @@ const compareSeatNumbers = (a, b) =>
     numeric: true,
     sensitivity: "base",
   });
+
+// Rule 1 — normalize seat names before matching (DB "A01" vs layout "A1")
+const normalizeSeatNumber = (value) => {
+  const raw = String(value == null ? "" : value).trim().toUpperCase().replace(/\s+/g, "");
+  const m = raw.match(/^([A-Z]+)-?0*(\d+)$/);
+  return m ? `${m[1]}${Number(m[2])}` : raw;
+};
+
+const findSeatByLayoutName = (floorSeats, seatNumStr) => {
+  const target = normalizeSeatNumber(seatNumStr);
+  return floorSeats.find(s => normalizeSeatNumber(s.seatNumber) === target) || null;
+};
+
+// Theme-aware seat palette — app default is dark, light via body.light-mode.
+// Light values match the spec table exactly; dark uses translucent fills.
+const isLightTheme = () => !!(document.body && document.body.classList.contains("light-mode"));
+
+const seatPalette = (status) => {
+  if (isLightTheme()) {
+    if (status === "Available") return { bg: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" };
+    if (status === "Occupied") return { bg: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b" };
+    if (status === "Reserved") return { bg: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" };
+    if (status === "Maintenance") return { bg: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af" };
+    return { bg: "var(--bg-hover)", border: "1px dashed var(--border-bright)", color: "var(--text-muted)" };
+  }
+  if (status === "Available") return { bg: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.45)", color: "#4ade80" };
+  if (status === "Occupied") return { bg: "rgba(239,68,68,0.14)", border: "1px solid rgba(239,68,68,0.45)", color: "#f87171" };
+  if (status === "Reserved") return { bg: "rgba(245,158,11,0.16)", border: "1px solid rgba(245,158,11,0.45)", color: "#fbbf24" };
+  if (status === "Maintenance") return { bg: "rgba(59,130,246,0.16)", border: "1px solid rgba(59,130,246,0.5)", color: "#60a5fa" };
+  return { bg: "var(--bg-hover)", border: "1px dashed var(--border-bright)", color: "var(--text-muted)" };
+};
 
 // True when this floor's seats are A/B-named, i.e. the hardcoded room layout
 // can be painted. An empty floor keeps the existing (placeholder) layout so
@@ -93,7 +126,7 @@ export const initSeatMapUI = async (mode, containerId) => {
       };
 
       const renderSignupSeatCard = (seatNumStr) => {
-        let seat = floorSeats.find(s => s.seatNumber === String(seatNumStr));
+        let seat = findSeatByLayoutName(floorSeats, seatNumStr);
         
         if (!seat) {
           return `
@@ -106,11 +139,9 @@ export const initSeatMapUI = async (mode, containerId) => {
         const isSelected = seat.id === signupSelectedId;
         const isPickable = seat.status === "Available";
 
-        let bg = "var(--bg-hover)", border = "1px solid var(--border)", color = "var(--text-primary)", cursor = "not-allowed", opacity = "0.55";
-        if (seat.status === "Available")   { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; color = "#166534"; cursor = "pointer"; opacity = "1"; }
-        if (seat.status === "Occupied")    { bg = "#fef2f2"; border = "1px solid #fecaca"; color = "#991b1b"; }
-        if (seat.status === "Reserved")    { bg = "#fffbeb"; border = "1px solid #fde68a"; color = "#92400e"; }
-        if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; color = "#1e40af"; }
+        const __pal = seatPalette(seat.status);
+        let bg = __pal.bg, border = __pal.border, color = __pal.color, cursor = "not-allowed", opacity = "0.55";
+        if (seat.status === "Available")   { cursor = "pointer"; opacity = "1"; }
 
         if (isSelected) { bg = "var(--primary)"; border = "2px solid var(--primary)"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
 
@@ -168,11 +199,9 @@ export const initSeatMapUI = async (mode, containerId) => {
           const isSelected = seat.id === signupSelectedId;
           const isPickable = seat.status === "Available";
 
-          let bg = "var(--bg-hover)", border = "1px solid var(--border)", color = "var(--text-primary)", cursor = "not-allowed", opacity = "0.55";
-          if (seat.status === "Available")   { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; color = "#166534"; cursor = "pointer"; opacity = "1"; }
-          if (seat.status === "Occupied")    { bg = "#fef2f2"; border = "1px solid #fecaca"; color = "#991b1b"; }
-          if (seat.status === "Reserved")    { bg = "#fffbeb"; border = "1px solid #fde68a"; color = "#92400e"; }
-          if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; color = "#1e40af"; }
+          const __pal = seatPalette(seat.status);
+          let bg = __pal.bg, border = __pal.border, color = __pal.color, cursor = "not-allowed", opacity = "0.55";
+          if (seat.status === "Available")   { cursor = "pointer"; opacity = "1"; }
 
           if (isSelected) { bg = "var(--primary)"; border = "2px solid var(--primary)"; color = "#fff"; cursor = "pointer"; opacity = "1"; }
 
@@ -303,6 +332,11 @@ export const initSeatMapUI = async (mode, containerId) => {
       renderSignupSeats();
     });
 
+    // Re-paint seat colors when night/day theme toggles
+    if (window.__seatThemeObserver) window.__seatThemeObserver.disconnect();
+    window.__seatThemeObserver = new MutationObserver(() => renderSignupSeats());
+    window.__seatThemeObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+
     return; // ── end signup mode ───────────────────────────────────────────
   }
 
@@ -312,6 +346,16 @@ export const initSeatMapUI = async (mode, containerId) => {
 
   const role = localStorage.getItem("userRole");
   if (role === "Student") return; // Security guard
+
+  // Drop old non-plan seats ("2","3","4"… / R-names / dupes) so the map shows
+  // only the A/B library plan. No-ops once the data is clean.
+  try {
+    const clean = await cleanupNonPlanSeats();
+    const changed = clean && clean.success ? ((clean.deleted || 0) + (clean.renamed || 0) + (clean.created || 0) + (clean.positioned || 0) + (clean.clearedStudents || 0) + (clean.fixedStudents || 0)) : 0;
+    if (changed > 0 && window.showToast) {
+      window.showToast(`Seat map fixed: ${clean.deleted || 0} old removed, ${clean.created || 0} created, ${clean.renamed || 0} renamed.`, "success");
+    }
+  } catch (e) { console.warn("Seat cleanup skipped:", e); }
 
   // Seed seats if empty
   await seedInitialSeats();
@@ -342,24 +386,48 @@ export const initSeatMapUI = async (mode, containerId) => {
     </div>
 
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom: 1rem; margin-bottom: 1.5rem;">
-      <div style="display: flex; gap: 1.5rem;">
-        <button id="view-tab-existing" class="view-tab active" style="background:transparent; border:none; border-bottom:2px solid var(--text-primary); padding: 0.5rem 0; font-size: 18px; font-weight: 600; color:var(--text-primary); cursor: pointer;">Seat Map</button>
-        <button id="view-tab-live" class="view-tab" style="background:transparent; border:none; border-bottom: 2px solid transparent; padding: 0.5rem 0; font-size: 18px; font-weight: 600; color:var(--text-secondary); cursor: pointer;">Live Seat Map</button>
-      </div>
+      <h2 style="margin:0; font-size: 18px; font-weight: 600; color:var(--text-primary);">Seat Map</h2>
       <div style="display: flex; gap: 0.75rem;">
-        <button class="btn btn-ghost" id="btn-filter-seats" style="background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius: 999px; padding: 6px 16px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg> Filter</button>
-        <button class="btn btn-primary" id="btn-add-seat" style="background:var(--primary); color:#fff; border-radius: 999px; padding: 6px 16px;">+ Add seat</button>
+        <button class="btn btn-ghost" id="btn-edit-layout" style="background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius: 999px; padding: 6px 16px;">✎ Edit layout</button>
       </div>
     </div>
     
     <div id="seatmap-view-existing">
       <div style="margin-bottom: 1rem;"><p class="page-subtitle" id="seat-subtitle">Loading...</p></div>
+      <style>
+        #seatmap-view-existing .legend-pill { padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; }
+        #seatmap-view-existing .legend-av { background:#f0fdf4; color:#166534; border-color:#bbf7d0; }
+        #seatmap-view-existing .legend-oc { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+        #seatmap-view-existing .legend-rs { background:#fffbeb; color:#92400e; border-color:#fde68a; }
+        #seatmap-view-existing .legend-mt { background:#eff6ff; color:#1e40af; border-color:#bfdbfe; }
+        body:not(.light-mode) #seatmap-view-existing .legend-av { background:rgba(34,197,94,0.14); color:#4ade80; border-color:rgba(34,197,94,0.45); }
+        body:not(.light-mode) #seatmap-view-existing .legend-oc { background:rgba(239,68,68,0.14); color:#f87171; border-color:rgba(239,68,68,0.45); }
+        body:not(.light-mode) #seatmap-view-existing .legend-rs { background:rgba(245,158,11,0.16); color:#fbbf24; border-color:rgba(245,158,11,0.45); }
+        body:not(.light-mode) #seatmap-view-existing .legend-mt { background:rgba(59,130,246,0.16); color:#60a5fa; border-color:rgba(59,130,246,0.5); }
+      </style>
       <!-- Seat Legend -->
       <div class="seat-legend" style="display:flex; gap:1rem; margin-bottom:1.5rem;">
-        <span class="legend-pill" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.available">Available</span></span>
-        <span class="legend-pill" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.occupied">Occupied</span></span>
-        <span class="legend-pill" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.reserved">Reserved</span></span>
-        <span class="legend-pill" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.maintenance">Maintenance</span></span>
+        <span class="legend-pill legend-av"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.available">Available</span></span>
+        <span class="legend-pill legend-oc"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.occupied">Occupied</span></span>
+        <span class="legend-pill legend-rs"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.reserved">Reserved</span></span>
+        <span class="legend-pill legend-mt"><span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span><span data-i18n="status.maintenance">Maintenance</span></span>
+      </div>
+
+      <!-- Filters: name/seat search + status only -->
+      <div class="seat-filterbar" style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap; align-items:center;">
+        <input id="seat-filter-search" placeholder="Search name or seat…" class="input-field"
+          style="flex:1; min-width:180px; padding:8px 14px; border:1px solid var(--border); border-radius:999px; background:var(--bg-card); color:var(--text-primary); font-size:13px;" />
+        <select id="seat-filter-status" class="input-field"
+          style="padding:8px 14px; border:1px solid var(--border); border-radius:999px; background:var(--bg-card); color:var(--text-primary); font-size:13px; cursor:pointer;">
+          <option value="All">All statuses</option>
+          <option value="Available">Available</option>
+          <option value="Reserved">Reserved</option>
+          <option value="Occupied">Occupied</option>
+          <option value="Maintenance">Maintenance</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+        <button id="seat-filter-clear" style="padding:8px 16px; border:1px solid var(--border); border-radius:999px; background:transparent; color:var(--text-secondary); font-size:13px; cursor:pointer;">Clear</button>
+        <span id="seat-filter-count" style="font-size:12px; color:var(--text-muted);"></span>
       </div>
 
       <!-- Floor Tabs -->
@@ -371,119 +439,16 @@ export const initSeatMapUI = async (mode, containerId) => {
       <!-- Main Floor Card -->
       <div class="card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.5rem; margin-bottom:2rem;">
         <h3 style="font-size:15px; font-weight:600; color:var(--text-primary); margin-bottom:4px;" id="current-floor-title" data-i18n="floor.ground">Ground Floor</h3>
-        <p style="font-size:13px; color:var(--text-muted); margin-bottom:1.5rem;">Section A · Section B · click a seat for details</p>
+        <p style="font-size:13px; color:var(--text-muted); margin-bottom:1.5rem;">Section A · Section B · click a seat to manage it</p>
         
-        <div id="seat-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 1rem;">
-          <div style="text-align:center; grid-column: 1 / -1; padding: 2rem; color:var(--text-muted);">Loading live seat map...</div>
+        <div id="seat-grid">
+          <div style="text-align:center; padding:2rem; color:var(--text-muted);">Loading live seat map...</div>
         </div>
       </div>
     </div>
-    
-    <div id="seatmap-view-live" style="display:none;"></div>
   `;
 
-  if (!document.getElementById("add-seat-modal")) {
-    const modalDiv = document.createElement("div");
-    modalDiv.innerHTML = `
-      <dialog id="add-seat-modal" class="card" style="border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card, #fff); color: var(--text-primary, #0f172a);">
-        <div style="padding: 1.5rem; min-width: 400px; max-width: 500px; max-height: 85vh; overflow-y: auto;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h2 style="margin: 0;">Add New Seat</h2>
-            <button class="btn btn-ghost" onclick="document.getElementById('add-seat-modal').close()" style="padding: 0.25rem 0.5rem; background: transparent; border: none; font-size: 18px; cursor: pointer;">✕</button>
-          </div>
-          <form id="add-seat-form" onsubmit="event.preventDefault(); window.submitAddSeatForm()">
-            <div class="form-group" style="margin-bottom: 1.5rem;">
-              <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem; font-weight:600; color:var(--text-secondary);">Seat Number</label>
-              <input type="text" id="add-seat-number" required placeholder="e.g. B01" class="input-field" style="width: 100%; box-sizing: border-box; padding: 0.5rem; border:1px solid var(--border, #e2e8f0); border-radius:6px;" />
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
-              <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-seat-modal').close()" style="padding:8px 16px; border:1px solid var(--border, #e2e8f0); border-radius:999px; background:transparent;">Cancel</button>
-              <button type="submit" class="btn btn-primary" id="btn-save-seat" style="padding:8px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Save Seat</button>
-            </div>
-          </form>
-        </div>
-      </dialog>
-    `;
-    document.body.appendChild(modalDiv.firstElementChild);
-  }
-
-  if (!document.getElementById("filter-seat-modal")) {
-    const filterModalDiv = document.createElement("div");
-    filterModalDiv.innerHTML = `
-      <dialog id="filter-seat-modal" class="card" style="border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card, #fff); color: var(--text-primary, #0f172a);">
-        <div style="padding: 1.5rem; min-width: 400px; max-width: 500px; max-height: 85vh; overflow-y: auto;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h2 style="margin: 0;">Filter Seats</h2>
-            <button class="btn btn-ghost" onclick="document.getElementById('filter-seat-modal').close()" style="padding: 0.25rem 0.5rem; background: transparent; border: none; font-size: 18px; cursor: pointer;">✕</button>
-          </div>
-          <form id="filter-seat-form" onsubmit="event.preventDefault(); window.applySeatFilters()">
-            <div class="form-group" style="margin-bottom: 1rem;">
-              <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem; font-weight:600; color:var(--text-secondary);">Search (Seat No or Name)</label>
-              <input type="text" id="filter-seat-search" placeholder="e.g. A01 or John" class="input-field" style="width: 100%; box-sizing: border-box; padding: 0.5rem; border:1px solid var(--border, #e2e8f0); border-radius:6px;" />
-            </div>
-            <div class="form-group" style="margin-bottom: 1.5rem;">
-              <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem; font-weight:600; color:var(--text-secondary);">Status</label>
-              <select id="filter-seat-status" class="input-field" style="width: 100%; box-sizing: border-box; padding: 0.5rem; border:1px solid var(--border, #e2e8f0); border-radius:6px;">
-                <option value="All">All Statuses</option>
-                <option value="Available">Available</option>
-                <option value="Occupied">Occupied</option>
-                <option value="Reserved">Reserved</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="Inactive">Inactive</option>
-              </select>
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
-              <button type="button" class="btn btn-ghost" onclick="window.clearSeatFilters()" style="padding:8px 16px; border:1px solid var(--border, #e2e8f0); border-radius:999px; background:transparent;">Clear Filters</button>
-              <button type="submit" class="btn btn-primary" style="padding:8px 16px; border:none; border-radius:999px; background:var(--primary); color:#fff;">Apply</button>
-            </div>
-          </form>
-        </div>
-      </dialog>
-    `;
-    document.body.appendChild(filterModalDiv.firstElementChild);
-  }
-
-  // View Tab Listeners
-  let liveMapInitialized = false;
-  const tabExisting = document.getElementById("view-tab-existing");
-  const tabLive = document.getElementById("view-tab-live");
-  const viewExisting = document.getElementById("seatmap-view-existing");
-  const viewLive = document.getElementById("seatmap-view-live");
-
-  if (tabExisting && tabLive) {
-    tabExisting.addEventListener("click", () => {
-      tabExisting.classList.add("active");
-      tabExisting.style.borderBottomColor = "var(--text-primary)";
-      tabExisting.style.color = "var(--text-primary)";
-      
-      tabLive.classList.remove("active");
-      tabLive.style.borderBottomColor = "transparent";
-      tabLive.style.color = "var(--text-secondary)";
-
-      viewExisting.style.display = "block";
-      viewLive.style.display = "none";
-      document.getElementById("btn-add-seat").style.display = "inline-block";
-    });
-
-    tabLive.addEventListener("click", () => {
-      tabLive.classList.add("active");
-      tabLive.style.borderBottomColor = "var(--text-primary)";
-      tabLive.style.color = "var(--text-primary)";
-      
-      tabExisting.classList.remove("active");
-      tabExisting.style.borderBottomColor = "transparent";
-      tabExisting.style.color = "var(--text-secondary)";
-
-      viewExisting.style.display = "none";
-      viewLive.style.display = "block";
-      document.getElementById("btn-add-seat").style.display = "none";
-
-      if (!liveMapInitialized) {
-        initLiveSeatMapInTab("seatmap-view-live");
-        liveMapInitialized = true;
-      }
-    });
-  }
+  // View Tab Listeners — removed: Live Seat Map lives in the sidebar only.
 
   // Floor Tab Listeners
   document.querySelectorAll(".floor-tab").forEach(btn => {
@@ -504,66 +469,100 @@ export const initSeatMapUI = async (mode, containerId) => {
     });
   });
 
-  if (document.getElementById("btn-add-seat")) {
-    document.getElementById("btn-add-seat").addEventListener("click", () => {
-      document.getElementById("add-seat-number").value = "";
-      document.getElementById("add-seat-modal").showModal();
+  // ── Inline filters: name/seat search + status (live, no modal) ───────────
+  const seatSearchInput = document.getElementById("seat-filter-search");
+  const seatStatusSelect = document.getElementById("seat-filter-status");
+  const seatClearBtn = document.getElementById("seat-filter-clear");
+  if (seatSearchInput) {
+    seatSearchInput.value = currentFilters.search;
+    seatSearchInput.addEventListener("input", () => {
+      currentFilters.search = seatSearchInput.value.trim();
+      renderSeatMap();
+    });
+  }
+  if (seatStatusSelect) {
+    seatStatusSelect.value = currentFilters.status;
+    seatStatusSelect.addEventListener("change", () => {
+      currentFilters.status = seatStatusSelect.value;
+      renderSeatMap();
+    });
+  }
+  if (seatClearBtn) {
+    seatClearBtn.addEventListener("click", () => {
+      currentFilters.search = "";
+      currentFilters.status = "All";
+      if (seatSearchInput) seatSearchInput.value = "";
+      if (seatStatusSelect) seatStatusSelect.value = "All";
+      renderSeatMap();
     });
   }
 
-  window.submitAddSeatForm = async () => {
-    const seatNumber = document.getElementById("add-seat-number").value;
-    if (!seatNumber) {
-      window.showToast("Please enter a seat number.", "warning");
-      return;
-    }
-
-    const btn = document.getElementById("btn-save-seat");
-    const originalText = btn.innerText;
-    btn.innerText = "Saving...";
-    btn.disabled = true;
-
-    try {
-      const res = await addSingleSeat(seatNumber.trim().toUpperCase(), currentFilters.floor);
-      if (res.success) {
-        document.getElementById("add-seat-modal").close();
-        document.getElementById("add-seat-number").value = "";
-        if(typeof showToast === 'function') showToast("Seat added successfully to " + currentFilters.floor + "!");
-        else window.showToast("Seat added successfully to " + currentFilters.floor + "!", "success");
-      } else {
-        window.showToast("Failed to add seat: " + res.error, "error");
-      }
-    } catch (e) {
-      window.showToast("Error adding seat: " + e.message, "error");
-    } finally {
-      btn.innerText = originalText;
-      btn.disabled = false;
-    }
-  };
-
-  const btnFilter = document.getElementById("btn-filter-seats");
-  if (btnFilter) {
-    btnFilter.addEventListener("click", () => {
-      document.getElementById("filter-seat-search").value = currentFilters.search;
-      document.getElementById("filter-seat-status").value = currentFilters.status;
-      document.getElementById("filter-seat-modal").showModal();
+  // ── Playground: Edit-layout toggle (admins only) ─────────────────────────
+  const btnEditLayout = document.getElementById("btn-edit-layout");
+  if (btnEditLayout) {
+    if (role === "Employee" || role === "Student") btnEditLayout.style.display = "none";
+    btnEditLayout.addEventListener("click", () => {
+      layoutEditMode = !layoutEditMode;
+      btnEditLayout.innerText = layoutEditMode ? "✓ Done editing" : "✎ Edit layout";
+      btnEditLayout.style.background = layoutEditMode ? "var(--primary)" : "var(--bg-card)";
+      btnEditLayout.style.color = layoutEditMode ? "#fff" : "var(--text-primary)";
+      if (window.showToast) window.showToast(layoutEditMode ? "Edit mode: drag seats to move, ✎ rename, × delete, click + to add." : "Layout saved. Back to operations.", layoutEditMode ? "warning" : "success");
+      renderSeatMap();
     });
   }
 
-  window.applySeatFilters = () => {
-    currentFilters.search = document.getElementById("filter-seat-search").value.trim();
-    currentFilters.status = document.getElementById("filter-seat-status").value;
-    document.getElementById("filter-seat-modal").close();
-    renderSeatMap();
+  // Playground actions — called from tiles / empty cells in edit mode.
+  window.addSeatAtCell = async (col, row) => {
+    const res = await addSeatAt(currentFilters.floor, Number(col), Number(row));
+    if (res.success) window.showToast(`Seat ${res.seatNumber} created!`, "success");
+    else window.showToast(`Error: ${res.error}`, "error");
   };
 
-  window.clearSeatFilters = () => {
-    currentFilters.search = "";
-    currentFilters.status = "All";
-    document.getElementById("filter-seat-modal").close();
-    renderSeatMap();
+  window.renameSeatPrompt = async (seatId, currentNumber) => {
+    const next = window.prompt(`Rename seat ${currentNumber} to:`, currentNumber);
+    if (!next || next.trim() === "" || next.trim() === currentNumber) return;
+    const res = await renameSeat(seatId, next.trim());
+    if (res.success) window.showToast(`Renamed to ${res.seatNumber}`, "success");
+    else window.showToast(`Error: ${res.error}`, "error");
   };
-  
+
+  window.deleteSeatPrompt = async (seatId, seatNumber) => {
+    const ok = window.confirm(`Delete seat ${seatNumber}?\n\nIt will be removed from the map. Its student (if any) loses the seat.`);
+    if (!ok) return;
+    const res = await deleteSeatById(seatId);
+    if (res.success) window.showToast(`Seat ${seatNumber} deleted.`, "success");
+    else window.showToast(`Error: ${res.error}`, "error");
+  };
+
+  // HTML5 drag & drop: drop onto an empty cell moves, onto a seat swaps.
+  window._seatDragStart = (ev, seatId) => {
+    dragSeatId = seatId;
+    try { ev.dataTransfer.setData("text/plain", seatId); ev.dataTransfer.effectAllowed = "move"; } catch (_) {}
+  };
+  window._seatDragOver = (ev) => { ev.preventDefault(); try { ev.dataTransfer.dropEffect = "move"; } catch (_) {} };
+  window._seatDropOnCell = async (ev, col, row) => {
+    ev.preventDefault();
+    const id = (ev.dataTransfer && ev.dataTransfer.getData("text/plain")) || dragSeatId;
+    if (!id) return;
+    dragSeatId = null;
+    const dragged = allSeats.find(s => s.id === id);
+    if (!dragged) return;
+    col = Number(col); row = Number(row);
+    if (Number(dragged.col) === col && Number(dragged.row) === row) return;
+    const occupant = allSeats.find(s => s.id !== id && (s.floor || "Ground Floor") === currentFilters.floor && Number(s.col) === col && Number(s.row) === row);
+    if (occupant) {
+      // Swap the two seats so no position is ever lost.
+      const from = { col: Number(dragged.col), row: Number(dragged.row) };
+      await saveSeatPosition(occupant.id, from.col, from.row);
+      await saveSeatPosition(id, col, row);
+      window.showToast(`Swapped ${dragged.seatNumber} ↔ ${occupant.seatNumber}`, "success");
+    } else {
+      const res = await saveSeatPosition(id, col, row);
+      if (res.success) window.showToast(`Moved ${dragged.seatNumber} to col ${col}, row ${row}`, "success");
+      else window.showToast(`Error: ${res.error}`, "error");
+    }
+  };
+
   let currentSelectedSeat = null;
 
   // Create modal dynamically if it doesn't exist
@@ -618,8 +617,18 @@ export const initSeatMapUI = async (mode, containerId) => {
     });
   }
 
-  // Global Actions
+  // Seat click — opens the action modal immediately (no under-map detail line).
+  // In edit-layout mode a click is for moving/renaming, not operations.
   window.handleSeatClick = (seatId) => {
+    if (layoutEditMode) return;
+    const clicked = allSeats.find(s => s.id === seatId);
+    if (!clicked) return;
+    currentSelectedSeat = clicked;
+    window.manageSeat(seatId);
+  };
+
+  // Staff seat actions (assign / maintenance / inactive) — real backend
+  window.manageSeat = (seatId) => {
     const role = localStorage.getItem("userRole");
     if (role === "Employee") {
       return window.showToast("You only have View permissions for seats.", "warning");
@@ -684,13 +693,18 @@ export const initSeatMapUI = async (mode, containerId) => {
     seatModal.style.display = "flex";
   };
 
-  // Start Listener
+  // Start Listener (kept for later backend wiring; display uses static data)
   if (unsubscribe) unsubscribe();
   unsubscribe = listenToAllSeats((records) => {
     allSeats = records;
     updateSeatAnalysis(allSeats);
     renderSeatMap();
   });
+
+  // Re-paint seat colors when night/day theme toggles
+  if (window.__seatThemeObserver) window.__seatThemeObserver.disconnect();
+  window.__seatThemeObserver = new MutationObserver(() => renderSeatMap());
+  window.__seatThemeObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
 };
 
 const processSeatAction = async (seat, choice) => {
@@ -765,15 +779,6 @@ const updateSeatAnalysis = (seats) => {
   }
 };
 
-  window.quickCreateSeat = async (seatNumber, floor) => {
-    const res = await addSingleSeat(String(seatNumber), floor);
-    if (res.success) {
-      if(typeof showToast === 'function') showToast(`Seat ${seatNumber} created!`, 'success');
-    } else {
-      if(typeof showToast === 'function') showToast(`Error: ${res.error}`, 'error');
-    }
-  };
-
   const renderSeatMap = () => {
     const grid = document.getElementById("seat-grid");
     if (!grid) return;
@@ -783,81 +788,8 @@ const updateSeatAnalysis = (seats) => {
       return seatFloor === currentFilters.floor;
     });
 
-    const generateRange = (prefix, start, end) => {
-      const arr = [];
-      if (start <= end) {
-        for (let i = start; i <= end; i++) arr.push(`${prefix}${i}`);
-      } else {
-        for (let i = start; i >= end; i--) arr.push(`${prefix}${i}`);
-      }
-      return arr;
-    };
-
-    const renderSeatCard = (seatNumStr) => {
-      let seat = allSeats.find(s => s.seatNumber === String(seatNumStr) && s.floor === currentFilters.floor);
-      
-      if (!seat) {
-        return `
-          <div class="seat-card empty-seat" 
-               onclick="window.quickCreateSeat('${seatNumStr}', '${currentFilters.floor}')"
-               style="background:var(--bg-hover); border:1px dashed var(--border-bright); border-radius: 8px; height: 50px; display: flex; align-items: center; justify-content: center; color:var(--text-muted); font-size: 14px; cursor: pointer; transition: 0.2s;"
-               onmouseover="this.style.background='var(--bg-hover)';"
-               onmouseout="this.style.background='var(--bg-hover)';"
-               title="Click to create seat ${seatNumStr} in database"
-               >
-            ${seatNumStr}
-          </div>
-        `;
-      }
-
-      let isFilteredOut = false;
-      if (currentFilters.status !== "All" && seat.status !== currentFilters.status) isFilteredOut = true;
-      if (currentFilters.search) {
-        const q = currentFilters.search.toLowerCase();
-        const sn = (seat.seatNumber||"").toLowerCase();
-        const asn = (seat.assignedStudentName||"").toLowerCase();
-        if (!sn.includes(q) && !asn.includes(q)) isFilteredOut = true;
-      }
-
-      let bg = "var(--bg-hover)", border = "1px solid var(--border)", text = "var(--text-primary)";
-      if (seat.status === "Available") { bg = "#f0fdf4"; border = "1px solid #bbf7d0"; text = "#166534"; }
-      else if (seat.status === "Occupied") { bg = "#fef2f2"; border = "1px solid #fecaca"; text = "#991b1b"; }
-      else if (seat.status === "Reserved") { bg = "#fffbeb"; border = "1px solid #fde68a"; text = "#92400e"; }
-      else if (seat.status === "Maintenance") { bg = "#eff6ff"; border = "1px solid #bfdbfe"; text = "#1e40af"; }
-      else if (seat.status === "Inactive") { bg = "var(--bg-hover)"; border = "1px dashed var(--border-bright)"; text = "var(--text-muted)"; }
-
-      return `
-        <div 
-          class="seat-card"
-          onclick="window.handleSeatClick('${seat.id}')"
-          style="
-            background: ${bg}; border: ${border}; color: ${text}; 
-            border-radius: 8px; height: 50px; display: flex; 
-            align-items: center; justify-content: center;
-            cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s;
-            opacity: ${isFilteredOut ? '0.15' : '1'};
-          "
-          onmouseover="this.style.boxShadow='0 0 0 2px currentColor';"
-          onmouseout="this.style.boxShadow='none';"
-        >
-          <div style="font-size: 14px; font-weight: 600;">${seat.seatNumber}</div>
-        </div>
-      `;
-    };
-
-    const renderCustomColHtml = (arr) => {
-      let colHtml = `<div style="display: flex; flex-direction: column; gap: 0.5rem; flex: 1;">`;
-      arr.forEach(num => { 
-        if(num === null) {
-          colHtml += `<div style="height: 50px; width: 100%;"></div>`;
-        } else {
-          colHtml += renderSeatCard(num); 
-        }
-      });
-      colHtml += `</div>`;
-      return colHtml;
-    };
-
+    // Spec layout names — also used to infer positions for backend docs that
+    // predate col/row, and to know structural gaps (nulls).
     const groundCol1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(n => 'A' + n);
     const groundCol2 = [null, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 67, 23, 22, 21, 20, 19].map(n => n ? 'A' + n : null);
     const groundCol3 = [null, 35, 36, null, 37, 38, 39, 40, 41, 42, null, 43, 68, 44, 45, 46, 47, 48].map(n => n ? 'A' + n : null);
@@ -868,9 +800,80 @@ const updateSeatAnalysis = (seats) => {
     const firstCol3 = [null, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => n ? 'B' + n : null);
     const firstCol4 = [40, 39, 38, 37, 36, 35, 34, 33, 32, 31, null].map(n => n ? 'B' + n : null);
 
-    // Generic responsive grid — every seat of this floor in natural order,
-    // reusing the existing renderSeatCard markup/colors, so seat click
-    // (window.handleSeatClick) and status/search filtering keep working.
+    const specCols = currentFilters.floor === "First Floor"
+      ? [firstCol1, firstCol2, firstCol3, firstCol4]
+      : [groundCol1, groundCol2, groundCol3, groundCol4];
+
+    // name -> {col,row} from the spec (for docs that predate col/row)
+    const specPosByName = new Map();
+    specCols.forEach((arr, ci) => {
+      arr.forEach((name, ri) => {
+        if (name) specPosByName.set(normalizeSeatNumber(name), { col: ci + 1, row: ri + 1 });
+      });
+    });
+
+    const isFilteredOut = (seat) => {
+      if (currentFilters.status !== "All" && seat.status !== currentFilters.status) return true;
+      if (currentFilters.search) {
+        const q = currentFilters.search.toLowerCase();
+        const sn = (seat.seatNumber||"").toLowerCase();
+        const asn = (seat.assignedStudentName||"").toLowerCase();
+        if (!sn.includes(q) && !asn.includes(q)) return true;
+      }
+      return false;
+    };
+
+    // "X of Y seats match" counter — updated on every render path.
+    const matchCountEl = document.getElementById("seat-filter-count");
+    if (matchCountEl) {
+      const active = currentFilters.status !== "All" || currentFilters.search;
+      matchCountEl.innerText = active
+        ? `${filtered.filter(s => !isFilteredOut(s)).length} of ${filtered.length} seats match`
+        : "";
+    }
+
+    // Single real seat tile. In edit mode: draggable + rename/delete buttons,
+    // click suppressed (handleSeatClick early-returns in edit mode).
+    const renderSeatCardBySeat = (seat) => {
+      const filteredOut = isFilteredOut(seat);
+      const __pal = seatPalette(seat.status);
+      const editBtns = layoutEditMode ? `
+        <span style="position:absolute; top:2px; right:4px; display:flex; gap:4px;">
+          <span onclick="event.stopPropagation(); window.renameSeatPrompt('${seat.id}', '${seat.seatNumber}')" title="Rename seat"
+            style="font-size:11px; cursor:pointer; opacity:0.75; padding:0 3px; border-radius:4px; background:rgba(0,0,0,0.08);">✎</span>
+          <span onclick="event.stopPropagation(); window.deleteSeatPrompt('${seat.id}', '${seat.seatNumber}')" title="Delete seat"
+            style="font-size:11px; cursor:pointer; opacity:0.75; padding:0 3px; border-radius:4px; background:rgba(0,0,0,0.08);">×</span>
+        </span>` : "";
+      const dragAttrs = layoutEditMode
+        ? `draggable="true" ondragstart="window._seatDragStart(event, '${seat.id}')"`
+        : "";
+      const dropAttrs = layoutEditMode
+        ? `ondragover="window._seatDragOver(event)" ondrop="window._seatDropOnCell(event, ${Number(seat.col)}, ${Number(seat.row)})"`
+        : "";
+      return `
+        <div
+          class="seat-card"
+          ${dragAttrs} ${dropAttrs}
+          onclick="window.handleSeatClick('${seat.id}')"
+          style="
+            position:relative;
+            background: ${__pal.bg}; border: ${__pal.border}; color: ${__pal.color};
+            border-radius: 8px; height: 50px; display: flex;
+            align-items: center; justify-content: center;
+            cursor: ${layoutEditMode ? "move" : "pointer"}; transition: box-shadow 0.15s, border-color 0.15s;
+            opacity: ${filteredOut ? '0.15' : '1'};
+          "
+          onmouseover="this.style.boxShadow='0 0 0 2px currentColor';"
+          onmouseout="this.style.boxShadow='none';"
+          title="${seat.seatNumber} · ${seat.status}${seat.assignedStudentName ? ' · ' + seat.assignedStudentName : ''}${layoutEditMode ? ' · drag to move' : ''}"
+        >
+          ${editBtns}
+          <div style="font-size: 14px; font-weight: 600;">${seat.seatNumber}</div>
+        </div>
+      `;
+    };
+
+    // Generic responsive grid — every seat of this floor in natural order.
     const paintAdminGenericGrid = () => {
       grid.style.display = "grid";
       grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(85px, 1fr))";
@@ -879,83 +882,99 @@ const updateSeatAnalysis = (seats) => {
       const sortedSeats = [...filtered].sort((a, b) =>
         compareSeatNumbers(a.seatNumber, b.seatNumber));
 
-      let fallbackHtml = "";
-      sortedSeats.forEach(seat => {
-        fallbackHtml += renderSeatCard(seat.seatNumber);
-      });
-
-      grid.innerHTML = fallbackHtml;
+      grid.innerHTML = sortedSeats.map(s => renderSeatCardBySeat(s)).join("");
     };
 
-    // Seats not named A*/B* (e.g. Ground Floor "2".."40", First Floor
-    // "R1".."R20") don't fit the hardcoded room layout — paint them all in
-    // the generic grid instead of the hardcoded columns.
+    // Seats not named A*/B* don't fit the room layout — generic grid.
     if (!shouldUseABLayout(filtered)) {
       paintAdminGenericGrid();
       return;
     }
 
+    // ── Data-driven room: positions come from backend col/row ──────────────
+    const posMap = new Map();
+    const unplaced = [];
+    filtered.forEach(seat => {
+      const c = Number(seat.col), r = Number(seat.row);
+      if (Number.isFinite(c) && Number.isFinite(r) && c >= 1 && c <= 4 && r >= 1) {
+        const key = `${c}x${r}`;
+        if (!posMap.has(key)) posMap.set(key, seat);
+        else unplaced.push(seat);
+      } else {
+        const inferred = specPosByName.get(normalizeSeatNumber(seat.seatNumber));
+        if (inferred) {
+          const key = `${inferred.col}x${inferred.row}`;
+          if (!posMap.has(key)) posMap.set(key, { ...seat, col: inferred.col, row: inferred.row });
+          else unplaced.push(seat);
+        } else {
+          unplaced.push(seat);
+        }
+      }
+    });
+
+    const baseRows = currentFilters.floor === "First Floor" ? 11 : 18;
+    let maxRow = baseRows;
+    posMap.forEach(seat => { if (Number(seat.row) > maxRow) maxRow = Number(seat.row); });
+
+    const renderCell = (col, row) => {
+      const seat = posMap.get(`${col}x${row}`);
+      if (seat) return renderSeatCardBySeat(seat);
+      if (layoutEditMode) {
+        return `
+          <div class="seat-card empty-cell"
+               onclick="window.addSeatAtCell(${col}, ${row})"
+               ondragover="window._seatDragOver(event)"
+               ondrop="window._seatDropOnCell(event, ${col}, ${row})"
+               style="background:transparent; border:1px dashed var(--border-bright); border-radius: 8px; height: 50px; display: flex; align-items: center; justify-content: center; color:var(--text-muted); font-size: 18px; cursor: copy;"
+               title="Click to add a seat here (col ${col}, row ${row})">+</div>`;
+      }
+      return `<div style="height: 50px; width: 100%;"></div>`;
+    };
+
+    const renderColByPosition = (colIdx) => {
+      let colHtml = `<div style="display: flex; flex-direction: column; gap: 0.5rem; flex: 1;">`;
+      for (let r = 1; r <= maxRow; r++) colHtml += renderCell(colIdx, r);
+      colHtml += `</div>`;
+      return colHtml;
+    };
+
+    const roomShell = (colsHtml, maxW) => `
+        <div style="background:var(--bg-card); padding: 3rem 2rem 4rem 2rem; border-radius: 12px; position: relative; border:1px solid var(--border);${layoutEditMode ? " outline:2px dashed var(--primary);" : ""}">
+          <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top: none; padding: 0.5rem 2.5rem; border-radius: 0 0 12px 12px; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+            DOOR
+          </div>
+          ${layoutEditMode ? `<div style="text-align:center; font-size:12px; color:var(--text-muted); margin-bottom:1rem;">EDIT MODE — drag seats to move · ✎ rename · × delete · + add</div>` : ""}
+          <div style="display: flex; gap: 1.5rem; justify-content: center; max-width: ${maxW}; margin: 0 auto; align-items: flex-start;">
+            ${colsHtml}
+          </div>
+          <div style="position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; pointer-events: none;">
+            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
+              TOILET-1
+            </div>
+            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
+              TOILET-2
+            </div>
+          </div>
+        </div>
+        ${unplaced.length ? `<div style="margin-top:1rem; font-size:12px; color:var(--text-muted);">+ ${unplaced.length} seat(s) without a position: ${unplaced.map(s => s.seatNumber).join(", ")}</div>` : ""}
+      `;
+
     let html = "";
-
     if (currentFilters.floor === "First Floor") {
-      html = `
-        <div style="background:var(--bg-card); padding: 3rem 2rem 4rem 2rem; border-radius: 12px; position: relative; border:1px solid var(--border);">
-          <!-- Door -->
-          <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top: none; padding: 0.5rem 2.5rem; border-radius: 0 0 12px 12px; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-            DOOR
-          </div>
-          
-          <div style="display: flex; gap: 1.5rem; justify-content: center; max-width: 800px; margin: 0 auto;">
-            ${renderCustomColHtml(firstCol1)}
-            ${renderCustomColHtml(firstCol2)}
-            ${renderCustomColHtml(firstCol3)}
-            ${renderCustomColHtml(firstCol4)}
-          </div>
-
-          <!-- Toilets -->
-          <div style="position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; pointer-events: none;">
-            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
-              TOILET-1
-            </div>
-            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
-              TOILET-2
-            </div>
-          </div>
-        </div>
-      `;
+      html = roomShell(
+        renderColByPosition(1) + renderColByPosition(2) + renderColByPosition(3) + renderColByPosition(4),
+        "800px"
+      );
     } else if (currentFilters.floor === "Ground Floor") {
-      html = `
-        <div style="background:var(--bg-card); padding: 3rem 2rem 4rem 2rem; border-radius: 12px; position: relative; border:1px solid var(--border);">
-          <!-- Door -->
-          <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); background:var(--bg-hover); border:1px solid var(--border); border-top: none; padding: 0.5rem 2.5rem; border-radius: 0 0 12px 12px; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-            DOOR
-          </div>
-          
-          <div style="display: flex; gap: 1.5rem; justify-content: center; max-width: 900px; margin: 0 auto; align-items: flex-start;">
-            ${renderCustomColHtml(groundCol1)}
-            ${renderCustomColHtml(groundCol2)}
-            ${renderCustomColHtml(groundCol3)}
-            ${renderCustomColHtml(groundCol4)}
-          </div>
-
-          <!-- Toilets -->
-          <div style="position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; pointer-events: none;">
-            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
-              TOILET-1
-            </div>
-            <div style="background:var(--bg-hover); border:1px solid var(--border); border-bottom: none; padding: 0.5rem 2.5rem; border-radius: 12px 12px 0 0; font-weight: 700; color:var(--text-secondary); letter-spacing: 2px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
-              TOILET-2
-            </div>
-          </div>
-        </div>
-      `;
+      html = roomShell(
+        renderColByPosition(1) + renderColByPosition(2) + renderColByPosition(3) + renderColByPosition(4),
+        "900px"
+      );
     } else {
-      // Fallback for other custom floors (already non-A/B checked above)
       paintAdminGenericGrid();
       return;
     }
 
-    // Unset grid style for custom physical layout containers
     grid.style.display = "block";
     grid.innerHTML = html;
   };
