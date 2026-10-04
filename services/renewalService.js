@@ -5,14 +5,25 @@ import { validateRenewal } from "./renewalValidation.js";
 /**
  * Listens to renewal history for a specific student
  */
-export const listenToRenewalHistory = (studentId, onUpdate) => {
+export const listenToRenewalHistory = (studentId, onUpdate, onError) => {
+  if (!studentId) return () => {};
   const q = query(collection(db, "renewals"), where("studentId", "==", studentId));
   return onSnapshot(q, (snapshot) => {
     const history = [];
     snapshot.forEach(doc => history.push({ id: doc.id, ...doc.data() }));
     // Sort descending
     history.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    onUpdate(history);
+    try { onUpdate(history); } catch (e) { console.warn("[renewals] onUpdate failed:", e); }
+  }, (err) => {
+    const msg = (err && (err.message || err.code)) || String(err);
+    if (/permission|insufficient/i.test(msg)) {
+      console.warn("[renewals] listening denied — check firestore.rules");
+      try { onUpdate([]); } catch (_) {}
+      if (typeof onError === "function") onError(msg);
+      return;
+    }
+    if (typeof onError === "function") onError(msg);
+    else console.warn("[renewals] listener error:", err);
   });
 };
 

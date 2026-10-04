@@ -319,24 +319,35 @@ export const assignSeat = async (seatId, student) => {
     const seatRef = doc(db, "seats", seatId);
     const snap = await getDoc(seatRef);
     if (!snap.exists()) throw new Error("Seat not found.");
-    
+
     validateSeatAssignment(snap.data());
 
-    // Update Seat
-    await updateDoc(seatRef, {
-      status: "Reserved", // It's assigned/reserved for this student
-      assignedStudentId: student.id,
-      assignedStudentName: student.name,
-      planType: student.planName || "Unknown",
-      lastUpdated: serverTimestamp()
-    });
+    // Update Seat (students may self-reserve an Available seat under new rules)
+    try {
+      await updateDoc(seatRef, {
+        status: "Reserved", // It's assigned/reserved for this student
+        assignedStudentId: student.id,
+        assignedStudentName: student.name,
+        planType: student.planName || "Unknown",
+        lastUpdated: serverTimestamp()
+      });
+    } catch (e) {
+      const msg = String((e && (e.code || e.message)) || e);
+      if (/permission|insufficient/i.test(msg)) {
+        throw new Error("Seat reservation denied. Please deploy the latest firestore.rules, or ask staff to assign the seat.");
+      }
+      throw e;
+    }
 
-    // Also update Student profile so they know their seat
-    const studentRef = doc(db, "students", student.id);
-    await updateDoc(studentRef, {
-      seatNumber: snap.data().seatNumber,
-      updatedAt: serverTimestamp()
-    });
+    // Also update Student profile so they know their seat.
+    // New self-admission users don't have a students/{uid} doc yet — skip quietly.
+    try {
+      const studentRef = doc(db, "students", student.id);
+      await updateDoc(studentRef, {
+        seatNumber: snap.data().seatNumber,
+        updatedAt: serverTimestamp()
+      });
+    } catch (_) { /* admission flow creates the doc moments later */ }
 
     return { success: true };
   } catch (error) {
@@ -352,9 +363,11 @@ export const unassignSeat = async (seatId) => {
 
     const data = snap.data();
     if (data.assignedStudentId) {
-      // Clear from student profile
-      const studentRef = doc(db, "students", data.assignedStudentId);
-      await updateDoc(studentRef, { seatNumber: null });
+      // Clear from student profile (best effort — doc may not exist yet)
+      try {
+        const studentRef = doc(db, "students", data.assignedStudentId);
+        await updateDoc(studentRef, { seatNumber: null });
+      } catch (_) {}
     }
 
     // Reset Seat
@@ -365,9 +378,13 @@ export const unassignSeat = async (seatId) => {
       planType: null,
       lastUpdated: serverTimestamp()
     });
-    
+
     return { success: true };
   } catch (error) {
+    const msg = String((error && (error.code || error.message)) || error);
+    if (/permission|insufficient/i.test(msg)) {
+      return { success: false, error: "Seat release denied. Please deploy the latest firestore.rules." };
+    }
     return { success: false, error: error.message };
   }
 };
@@ -381,6 +398,10 @@ export const changeSeatStatus = async (seatId, newStatus) => {
     });
     return { success: true };
   } catch (error) {
+    const msg = String((error && (error.code || error.message)) || error);
+    if (/permission|insufficient/i.test(msg)) {
+      return { success: false, error: "Seat update denied. Please deploy the latest firestore.rules." };
+    }
     return { success: false, error: error.message };
   }
 };

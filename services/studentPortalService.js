@@ -18,8 +18,21 @@ export const listenToStudentPortalData = (onDataUpdate, onError) => {
       
       onSnapshot(studentDocRef, async (studentDoc) => {
         if (studentDoc.exists()) {
-          // Found in students collection — full profile available
-          onDataUpdate({ id: studentDoc.id, ...studentDoc.data() });
+          // Found in students collection — full profile available.
+          // Merge profile photo from studentDocuments if the denormalised
+          // copy is missing (older uploads only wrote there).
+          const base = { id: studentDoc.id, ...studentDoc.data() };
+          if (!base.profilePhotoUrl && !base.photoUrl) {
+            try {
+              const docsSnap = await getDoc(doc(db, "studentDocuments", studentDoc.id));
+              if (docsSnap.exists()) {
+                const dd = docsSnap.data();
+                const photo = dd.profilePhoto || dd.selfie || null;
+                if (photo) { base.profilePhotoUrl = photo; base.photoUrl = photo; }
+              }
+            } catch (_) { /* photo fallback is best-effort */ }
+          }
+          onDataUpdate(base);
           return;
         }
 

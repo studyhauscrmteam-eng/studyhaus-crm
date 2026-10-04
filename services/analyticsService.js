@@ -86,12 +86,26 @@ function rangeBounds(key) {
   };
 }
 
-/** Each collection is read independently so one denied read can't blank the page. */
+/** Each collection is read independently so one denied read can't blank the page.
+ *  Students never have access to these staff-only aggregates — skip the reads
+ *  entirely so the console isn't flooded with permission-denied warnings. */
 async function loadData(force) {
   if (cache && !force && Date.now() - cache.at < 30000) return cache;
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem("userRole") === "Student") {
+      cache = { payments: [], students: [], seats: [], attendance: [], at: Date.now(), _staffOnly: true };
+      return cache;
+    }
+  } catch (_) {}
   const grab = name => getDocs(collection(db, name))
     .then(s => s.docs.map(d => d.data()))
-    .catch(err => { console.warn(`[analytics] cannot read "${name}":`, err.message); return null; });
+    .catch(err => {
+      const msg = (err && (err.message || err.code)) || "";
+      // Permission errors are expected for non-staff roles — don't spam the console.
+      if (/permission|insufficient/i.test(String(msg))) return null;
+      console.warn(`[analytics] cannot read "${name}":`, err.message || err);
+      return null;
+    });
 
   const [payments, students, seats, attendance] = await Promise.all([
     grab("payments"), grab("students"), grab("seats"), grab("attendance"),
@@ -229,6 +243,11 @@ function setMetric(card, value, chg) {
 async function renderAnalytics() {
   const page = document.getElementById("page-analytics");
   if (!page || rendering) return;
+  // Analytics is a staff-only module. The student portal ships the same HTML
+  // shell, so bail out quietly instead of firing denied reads.
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem("userRole") === "Student") return;
+  } catch (_) {}
   rendering = true;
 
   const b = rangeBounds(rangeKey);
@@ -281,6 +300,10 @@ export const initAnalyticsUI = () => {
   if (initialized) return;
   const page = document.getElementById("page-analytics");
   if (!page) return;                       // page not present on this screen
+  try {
+    // Never wire analytics for students — every collection read would be denied.
+    if (typeof localStorage !== "undefined" && localStorage.getItem("userRole") === "Student") return;
+  } catch (_) {}
   initialized = true;
 
   page.querySelectorAll(".filter-tabs .filter-tab").forEach(tab => {
@@ -295,9 +318,16 @@ export const initAnalyticsUI = () => {
   renderAnalytics();                            // prime the page with real numbers
 };
 
-// Auto-init when this module lands on a page without firebase-entry wiring
+// Auto-init when this module lands on a page without firebase-entry wiring.
+// Skipped for students so their console stays clean.
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => setTimeout(initAnalyticsUI, 0));
+  document.addEventListener("DOMContentLoaded", () => setTimeout(() => {
+    try { if (typeof localStorage !== "undefined" && localStorage.getItem("userRole") === "Student") return; } catch (_) {}
+    initAnalyticsUI();
+  }, 0));
 } else {
-  setTimeout(initAnalyticsUI, 0);
+  setTimeout(() => {
+    try { if (typeof localStorage !== "undefined" && localStorage.getItem("userRole") === "Student") return; } catch (_) {}
+    initAnalyticsUI();
+  }, 0);
 }

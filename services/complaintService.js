@@ -39,7 +39,7 @@ export const submitComplaint = async (student, category, description) => {
   }
 };
 
-export const listenToMyComplaints = (studentId, onUpdate) => {
+export const listenToMyComplaints = (studentId, onUpdate, onError) => {
   if (!studentId) return () => {};
   const q = query(
     collection(db, "complaints"),
@@ -49,7 +49,17 @@ export const listenToMyComplaints = (studentId, onUpdate) => {
     const records = [];
     snapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
     records.sort((a, b) => new Date(b.date) - new Date(a.date));
-    onUpdate(records);
+    try { onUpdate(records); } catch (e) { console.warn("[complaints] onUpdate failed:", e); }
+  }, (err) => {
+    const msg = (err && (err.message || err.code)) || String(err);
+    if (/permission|insufficient/i.test(msg)) {
+      console.warn("[complaints] listening denied — check firestore.rules");
+      try { onUpdate([]); } catch (_) {}
+      if (typeof onError === "function") onError(msg);
+      return;
+    }
+    if (typeof onError === "function") onError(msg);
+    else console.warn("[complaints] listener error:", err);
   });
 };
 

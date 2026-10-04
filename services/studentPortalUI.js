@@ -37,108 +37,146 @@ export const initStudentPortalUI = () => {
   unsubscribePortal = listenToStudentPortalData(async (studentData) => {
     currentStudent = studentData;
 
-    // Listeners
+    // Listeners (each scoped to this student's own docs, so rules allow them).
+    // Pass an error callback where supported so a denied read shows an empty
+    // state instead of stalling the whole portal.
+    const attendanceErr = (msg) => {
+      console.warn("[portal] attendance listener:", msg);
+      currentAttendance = [];
+      renderPortal();
+    };
     if (!unsubscribeAttendance) {
-      unsubscribeAttendance = listenToMyAttendance(studentData.id, (records) => {
-        currentAttendance = records;
-        renderPortal();
-      });
+      try {
+        unsubscribeAttendance = listenToMyAttendance(studentData.id, (records) => {
+          currentAttendance = records;
+          renderPortal();
+        }, attendanceErr);
+      } catch (e) { attendanceErr(e.message); }
     }
 
     if (!unsubscribePayments) {
-      unsubscribePayments = listenToMyPayments(studentData.id, (records) => {
-        currentPayments = records;
-        renderPortal();
-      });
+      try {
+        unsubscribePayments = listenToMyPayments(studentData.id, (records) => {
+          currentPayments = records;
+          renderPortal();
+        });
+      } catch (e) { console.warn("[portal] payments listener:", e); currentPayments = []; }
     }
 
     if (!unsubscribeComplaints) {
-      unsubscribeComplaints = listenToMyComplaints(studentData.id, (records) => {
-        currentComplaints = records;
-        renderPortal();
-      });
+      try {
+        unsubscribeComplaints = listenToMyComplaints(studentData.id, (records) => {
+          currentComplaints = records;
+          renderPortal();
+        });
+      } catch (e) { console.warn("[portal] complaints listener:", e); currentComplaints = []; }
     }
 
     if (!unsubscribeRenewals) {
-      unsubscribeRenewals = listenToRenewalHistory(studentData.id, (records) => {
-        currentRenewals = records;
-        renderPortal();
-      });
+      try {
+        unsubscribeRenewals = listenToRenewalHistory(studentData.id, (records) => {
+          currentRenewals = records;
+          renderPortal();
+        });
+      } catch (e) { console.warn("[portal] renewals listener:", e); currentRenewals = []; }
     }
 
-    if (unsubscribeAttendance && unsubscribePayments && unsubscribeComplaints && unsubscribeRenewals) {
-      renderPortal(); // Initial render if already subscribed
-    }
+    renderPortal();
   }, (errorMsg) => {
     portalSection.innerHTML = `<div style="padding: 2rem; color: var(--danger); text-align: center;">${errorMsg}</div>`;
   });
 
   window.handleCheckIn = async () => {
+    if (!currentStudent) {
+      window.showToast("Profile still loading. Please wait a moment and try again.", "warning");
+      return;
+    }
+    if (currentStudent.status !== "Active") {
+      window.showToast("Membership is not active. Please clear dues or contact the desk.", "error");
+      return;
+    }
     // Seat-first check-in: EVERY student picks the seat they will use —
     // no auto check-in to an assigned seat, no plan-based shortcuts.
     const modal = document.getElementById("checkin-seat-modal");
-    if (!modal) return;
+    if (!modal) {
+      window.showToast("Check-in dialog not ready. Please refresh the page.", "error");
+      return;
+    }
 
-    // Clear previous selection
-    const numInput = document.getElementById("selectedSeatNumber");
-    const idInput = document.getElementById("selectedSeatId");
+    // Clear previous selection (scoped to the check-in modal)
+    const scope = modal;
+    const numInput = scope.querySelector("#selectedSeatNumber") || document.getElementById("selectedSeatNumber");
+    const idInput = scope.querySelector("#selectedSeatId") || document.getElementById("selectedSeatId");
     if (numInput) numInput.value = "";
     if (idInput) idInput.value = "";
-    const label = document.getElementById("signup-selected-label");
-    if (label) label.innerHTML = "Select a Seat";
 
     // Show modal and initialize seat map
-    modal.showModal();
-    import("./seatMapUI.js?v=ui1").then(({ initSeatMapUI }) => {
-      initSeatMapUI("signup", "checkin-seat-selection-section", { context: "checkin" });
-    });
+    if (!modal.open) modal.showModal();
+    try {
+      const { initSeatMapUI } = await import("./seatMapUI.js?v=ui1");
+      await initSeatMapUI("signup", "checkin-seat-selection-section", { context: "checkin" });
+    } catch (e) {
+      console.warn("[portal] seat map failed:", e);
+      window.showToast("Could not load seat map: " + (e.message || e), "error");
+    }
   };
 
   window.confirmCheckIn = async () => {
-    const selectedSeatId = document.getElementById("selectedSeatId")?.value;
-    const selectedSeatNumber = document.getElementById("selectedSeatNumber")?.value;
+    const modal = document.getElementById("checkin-seat-modal");
+    const getVal = (id) => (modal && modal.querySelector("#" + id)?.value) || document.getElementById(id)?.value || "";
+    const selectedSeatId = getVal("selectedSeatId");
+    const selectedSeatNumber = getVal("selectedSeatNumber");
 
     if (!selectedSeatId || !selectedSeatNumber) {
       window.showToast("Please select a seat from the map to check in.", "warning");
       return;
     }
-
-    const btn = document.getElementById("btn-confirm-checkin");
-    const originalText = btn.innerHTML;
-    btn.innerHTML = "Processing...";
-    btn.disabled = true;
-
-    const res = await checkIn(currentStudent, selectedSeatNumber);
-    if (!res.success) {
-      window.showToast((window.t ? window.t('Check-In Failed: ') : "Check-In Failed: ") + res.error, "error");
-    } else {
-      window.showToast(window.t ? window.t('Checked in successfully!') : "Checked in successfully!", "success");
-      const modal = document.getElementById("checkin-seat-modal");
-      if (modal) modal.close();
+    if (!currentStudent) {
+      window.showToast("Profile still loading. Please wait and try again.", "warning");
+      return;
     }
 
-    btn.innerHTML = originalText;
-    btn.disabled = false;
+    const btn = document.getElementById("btn-confirm-checkin");
+    const originalText = btn ? btn.innerHTML : "";
+    if (btn) { btn.innerHTML = "Processing..."; btn.disabled = true; }
+
+    try {
+      const res = await checkIn(currentStudent, selectedSeatNumber);
+      if (!res.success) {
+        window.showToast("Check-In Failed: " + res.error, "error");
+      } else if (res.warning) {
+        window.showToast("Checked in! " + res.warning, "warning");
+        if (modal) modal.close();
+      } else {
+        window.showToast("Checked in successfully!", "success");
+        if (modal) modal.close();
+      }
+    } catch (e) {
+      window.showToast("Check-In Failed: " + (e.message || e), "error");
+    } finally {
+      if (btn) { btn.innerHTML = originalText; btn.disabled = false; }
+    }
   };
 
   // Handle Check-out
   window.handleCheckOut = async (attendanceId) => {
-    const btn = document.getElementById("btn-checkout-top");
-    if (btn) { btn.innerHTML = "Checking out..."; btn.disabled = true; }
+    const btns = [document.getElementById("btn-checkout-top"), document.getElementById("btn-checkout"), document.getElementById("btn-checkin")].filter(Boolean);
+    btns.forEach(b => { b.dataset._label = b.innerHTML; b.innerHTML = "Checking out..."; b.disabled = true; });
 
     try {
       const res = await checkOut(attendanceId);
       if (!res.success) {
-        window.showToast((window.t ? window.t('Check-Out Failed: ') : "Check-Out Failed: ") + res.error, "error");
-        if (btn) { btn.innerHTML = "Check-Out Now"; btn.disabled = false; }
+        window.showToast("Check-Out Failed: " + res.error, "error");
+        btns.forEach(b => { b.innerHTML = b.dataset._label || "Check-Out Now"; b.disabled = false; });
+      } else if (res.warning) {
+        window.showToast("Checked out! " + res.warning, "warning");
       } else {
-        window.showToast(window.t ? window.t('Checked out successfully!') : "Checked out successfully!", "success");
-        // Reload is handled by listener mostly, but just in case
-        setTimeout(() => window.location.reload(), 1000);
+        window.showToast("Checked out successfully!", "success");
+        // Listener will refresh the UI — no hard reload needed.
       }
     } catch (e) {
-      window.showToast((window.t ? window.t('Check-Out Failed: ') : "Check-Out Failed: ") + e.message, "error");
-      if (btn) { btn.innerHTML = "Check-Out Now"; btn.disabled = false; }
+      window.showToast("Check-Out Failed: " + e.message, "error");
+      btns.forEach(b => { b.innerHTML = b.dataset._label || "Check-Out Now"; b.disabled = false; });
     }
   };
 
@@ -344,7 +382,13 @@ window.calculatePaymentAmount = async () => {
 };
 
 const renderPortal = () => {
-  if (!currentStudent || !currentAttendance || !currentPayments || !currentComplaints) return;
+  if (!currentStudent) return;
+  // Listeners attach async — render as soon as the profile lands, using empty
+  // arrays for sections that haven't delivered yet.
+  if (!Array.isArray(currentAttendance)) currentAttendance = [];
+  if (!Array.isArray(currentPayments)) currentPayments = [];
+  if (!Array.isArray(currentComplaints)) currentComplaints = [];
+  if (!Array.isArray(currentRenewals)) currentRenewals = [];
   const s = currentStudent;
   const portalSection = document.getElementById("page-student-portal");
   const initials = s.name ? s.name.substring(0, 2).toUpperCase() : "ST";
@@ -880,57 +924,73 @@ const renderPortal = () => {
       }
     });
 
-    // Profile photo update function
+    // Profile photo update — defined once per render but always reads the
+    // latest currentStudent so a stale closure can never show the wrong avatar.
     window.updateProfilePhoto = async () => {
-      const { initializePhotoUpload } = await import("./documentUploadService.js");
+      const live = currentStudent || s;
+      const livePhoto = live.profilePhotoUrl || live.photoUrl || null;
+      const liveInitials = (live.name || "ST").substring(0, 2).toUpperCase();
+      const liveAvatar = livePhoto
+        ? `<img src="${livePhoto}" alt="Profile" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(139,92,246,.15);color:var(--accent-violet);font-weight:700;font-size:2rem;">${liveInitials}</div>`;
+      // Remove any previous photo dialog (prevents stacked <dialog> nodes).
+      document.getElementById("profile-photo-modal")?.remove();
       const modal = document.createElement('dialog');
+      modal.id = "profile-photo-modal";
       modal.className = 'card';
-      modal.style.cssText = 'border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card); color: var(--text-primary); max-width: 500px; margin: auto;';
+      modal.style.cssText = 'border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card); color: var(--text-primary); max-width: 420px; width: calc(100vw - 32px); margin: auto;';
       modal.innerHTML = `
-        <div style="padding: 1.5rem; border-bottom: 1px solid var(--borderBright); display: flex; justify-content: space-between; align-items: center;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
           <h2 style="font-size: 1.1rem; font-weight: 600; margin: 0;">Profile Photo</h2>
-          <button onclick="this.closest('dialog').close()" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+          <button id="photo-close" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: var(--text-muted); line-height:1;">&times;</button>
         </div>
         <div style="padding: 1.5rem; text-align: center;">
-          <div id="photo-preview" style="width: 150px; height: 150px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); background: var(--bg-card); margin: 0 auto 1.5rem; box-shadow: 0 4px 12px rgba(5,150,105,0.2);">
-            ${avatarHtml}
+          <div id="photo-preview" style="width: 150px; height: 150px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); background: var(--bg-hover); margin: 0 auto 1rem; box-shadow: 0 4px 12px rgba(5,150,105,0.2);">
+            ${liveAvatar}
           </div>
           <div style="margin-bottom: 1rem;">
             <label class="btn btn-primary" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600; font-size:13px; padding:8px 16px; border-radius:8px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Upload Photo
+              Choose Photo
               <input type="file" accept="image/*" style="display:none;" id="profile-photo-input" />
             </label>
           </div>
-          <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1.5rem;">Max 2MB. JPG/PNG. Square crop recommended.</p>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1.25rem;">JPG/PNG up to 10MB. Compressed automatically — square photos look best.</p>
           <div style="display:flex; gap:0.5rem; justify-content:center;">
-            <button class="btn btn-ghost" onclick="this.closest('dialog').close()">Cancel</button>
+            <button class="btn btn-ghost" id="photo-cancel">Cancel</button>
             <button class="btn btn-primary" id="btn-save-photo" style="display:none;">Save Photo</button>
           </div>
         </div>
       `;
       document.body.appendChild(modal);
       modal.showModal();
+      modal.querySelector("#photo-close").onclick = () => modal.close();
+      modal.querySelector("#photo-cancel").onclick = () => modal.close();
+      modal.addEventListener("close", () => modal.remove());
 
       const input = modal.querySelector('#profile-photo-input');
       const preview = modal.querySelector('#photo-preview');
       const saveBtn = modal.querySelector('#btn-save-photo');
       let selectedFile = null;
+      let previewUrl = null;
 
       input.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 2 * 1024 * 1024) {
-          window.showToast("File too large. Max 2MB.", "error");
+        if (!file.type.startsWith('image/')) {
+          window.showToast("Please select an image file (JPG/PNG).", "error");
+          input.value = "";
           return;
         }
-        if (!file.type.startsWith('image/')) {
-          window.showToast("Please select an image file.", "error");
+        if (file.size > 10 * 1024 * 1024) {
+          window.showToast("Image is too large. Maximum 10MB.", "error");
+          input.value = "";
           return;
         }
         selectedFile = file;
-        const url = URL.createObjectURL(file);
-        preview.innerHTML = `<img src="${url}" alt="Preview" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(file);
+        preview.innerHTML = `<img src="${previewUrl}" alt="Preview" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
         saveBtn.style.display = 'inline-flex';
       });
 
@@ -940,17 +1000,22 @@ const renderPortal = () => {
         saveBtn.innerHTML = 'Uploading...';
         try {
           const { uploadProfilePhoto } = await import("./documentUploadService.js");
-          const result = await uploadProfilePhoto(selectedFile, s.id);
+          const result = await uploadProfilePhoto(selectedFile, live.id);
           if (result.success) {
+            // Update in-memory profile so the UI refreshes instantly.
+            if (currentStudent) {
+              currentStudent.profilePhotoUrl = result.url;
+              currentStudent.photoUrl = result.url;
+            }
             window.showToast("Profile photo updated!", "success");
             modal.close();
-            URL.revokeObjectURL(preview.querySelector('img')?.src);
-            window.location.reload(); // Refresh to show new photo
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            renderPortal();
           } else {
             window.showToast("Upload failed: " + result.error, "error");
           }
         } catch (e) {
-          window.showToast("Upload failed: " + e.message, "error");
+          window.showToast("Upload failed: " + (e.message || e), "error");
         } finally {
           saveBtn.disabled = false;
           saveBtn.innerHTML = 'Save Photo';
@@ -959,10 +1024,10 @@ const renderPortal = () => {
     };
 
     // Get student photo from Firestore documents
-    const studentPhoto = s.profilePhotoUrl || s.photoUrl || null;
-    const avatarHtml = studentPhoto 
-      ? `<img src="${studentPhoto}" alt="${s.name}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
-      : `<div class="metric-icon violet" style="border-radius: 50%; font-weight: bold; font-size: 1.5rem;">${initials}</div>`;
+    const studentPhoto = (currentStudent || s).profilePhotoUrl || s.photoUrl || null;
+    const avatarHtml = studentPhoto
+      ? `<img src="${studentPhoto}" alt="${(s.name || "Student").replace(/"/g, "")}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(139,92,246,.15);color:var(--accent-violet);font-weight:700;font-size:1.75rem;">${initials}</div>`;
 
     portalSection.innerHTML = `
       <div class="page-header">

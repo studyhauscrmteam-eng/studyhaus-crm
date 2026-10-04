@@ -38,7 +38,7 @@ export const submitPaymentRequest = async (student, transactionId, renewalMonths
 
 
 
-export const listenToMyPayments = (studentId, onUpdate) => {
+export const listenToMyPayments = (studentId, onUpdate, onError) => {
   if (!studentId) return () => {};
   const q = query(
     collection(db, "payments"),
@@ -48,7 +48,17 @@ export const listenToMyPayments = (studentId, onUpdate) => {
     const records = [];
     snapshot.forEach(doc => records.push({ id: doc.id, ...doc.data() }));
     records.sort((a, b) => new Date(b.date) - new Date(a.date));
-    onUpdate(records);
+    try { onUpdate(records); } catch (e) { console.warn("[payments] onUpdate failed:", e); }
+  }, (err) => {
+    const msg = (err && (err.message || err.code)) || String(err);
+    if (/permission|insufficient/i.test(msg)) {
+      console.warn("[payments] listening denied — check firestore.rules");
+      try { onUpdate([]); } catch (_) {}
+      if (typeof onError === "function") onError(msg);
+      return;
+    }
+    if (typeof onError === "function") onError(msg);
+    else console.warn("[payments] listener error:", err);
   });
 };
 

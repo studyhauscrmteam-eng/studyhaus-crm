@@ -686,3 +686,66 @@ export const setUploadProgress = (pct) => {
   if (bar) bar.style.width = pct + "%";
   if (label) label.textContent = pct;
 };
+
+// ──────────────────────────────────────────────
+// Profile photo (student portal)
+// Stored as compressed base64 so it works on the Spark plan (no Storage).
+// Saved to BOTH studentDocuments/{uid}.profilePhoto and
+// students/{uid}.profilePhotoUrl so every avatar picks it up.
+// ──────────────────────────────────────────────
+
+/**
+ * Upload / replace the student's profile photo.
+ * @param {File} file - image file (JPG/PNG, ideally < 2MB before compression)
+ * @param {string} studentId - students/{uid}
+ * @returns {Promise<{success: boolean, url?: string, error?: string}>}
+ */
+export const uploadProfilePhoto = async (file, studentId) => {
+  try {
+    if (!file) throw new Error("No file selected.");
+    if (!studentId) throw new Error("Missing student ID.");
+    if (!String(file.type || "").startsWith("image/")) throw new Error("Please select an image file (JPG/PNG).");
+    if (file.size > 10 * 1024 * 1024) throw new Error("Image is too large. Maximum 10 MB.");
+
+    const base64 = await compressImage(file);
+    if (!base64 || base64.length < 100) throw new Error("Could not read image. Please try another file.");
+
+    const stamp = new Date().toISOString();
+    // 1. Canonical copy in studentDocuments (viewable by staff + self per rules)
+    await setDoc(
+      doc(db, "studentDocuments", studentId),
+      { studentId, profilePhoto: base64, updatedAt: stamp },
+      { merge: true }
+    );
+
+    // 2. Denormalised copy on the student doc for instant avatar rendering
+    try {
+      const { updateDoc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "students", studentId), {
+        profilePhotoUrl: base64,
+        photoUrl: base64,
+        updatedAt: stamp,
+      });
+    } catch (e) {
+      // students/{uid} may not exist for pure users-collection accounts —
+      // still try users/{uid} so the photo isn't lost.
+      try {
+        const { updateDoc: _upd } = await import("firebase/firestore");
+        await _upd(doc(db, "users", studentId), { profilePhotoUrl: base64, photoUrl: base64, updatedAt: stamp });
+      } catch (_) {
+        console.warn("[profile-photo] student doc update skipped:", (e && e.message) || e);
+      }
+    }
+
+    return { success: true, url: base64 };
+  } catch (e) {
+    console.warn("[profile-photo] upload failed:", e);
+    return { success: false, error: (e && e.message) || "Upload failed." };
+  }
+};
+
+/**
+ * Legacy alias — older portal code imports this name.
+ * Kept as a no-op wrapper so the import never breaks.
+ */
+export const initializePhotoUpload = async () => ({ success: true });

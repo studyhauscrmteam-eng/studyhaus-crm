@@ -74,17 +74,27 @@ service cloud.firestore {
       allow update, delete: if isManagerUp();
     }
 
-    // ---------- payments (FIXED: students could not create payment requests) ----------
+    // ---------- payments (students can create + read their own requests) ----------
     match /payments/{paymentId} {
       allow read: if isStaff() || isOwnDoc();
-      allow create: if signedIn();
+      allow create: if signedIn() && (isStaff() || request.resource.data.get('studentId', null) == request.auth.uid);
       allow update, delete: if isStaff();
     }
 
-    // ---------- seats ----------
+    // ---------- seats (students may flip status during check-in/out + self reserve) ----------
     match /seats/{seatId} {
       allow read: if signedIn();
-      allow write: if isStaff();
+      allow create, delete: if isStaff();
+      allow update: if isStaff() || (
+        signedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'lastUpdated', 'assignedStudentId', 'assignedStudentName', 'planType']) &&
+        request.resource.data.status in ['Available', 'Occupied', 'Reserved'] &&
+        resource.data.status in ['Available', 'Occupied', 'Reserved', 'Maintenance', 'Inactive'] &&
+        (resource.data.get('assignedStudentId', null) == null || resource.data.get('assignedStudentId', null) == request.auth.uid) &&
+        (request.resource.data.get('assignedStudentId', null) == null || request.resource.data.get('assignedStudentId', null) == request.auth.uid) &&
+        request.resource.data.get('seatNumber', resource.data.get('seatNumber', null)) == resource.data.get('seatNumber', null) &&
+        request.resource.data.get('floor', resource.data.get('floor', null)) == resource.data.get('floor', null)
+      );
     }
 
     // ---------- membership plans ----------
@@ -93,16 +103,22 @@ service cloud.firestore {
       allow write: if isManagerUp();
     }
 
-    // ---------- attendance (FIXED: students could not check in) ----------
+    // ---------- attendance (students can check in/out their own sessions) ----------
     match /attendance/{attendanceId} {
       allow read: if isStaff() || isOwnDoc();
-      allow create: if signedIn();
-      allow update, delete: if isStaff();
+      allow create: if signedIn() && (isStaff() || request.resource.data.get('studentId', null) == request.auth.uid);
+      allow update: if isStaff() || (
+        signedIn() &&
+        resource.data.get('studentId', null) == request.auth.uid &&
+        request.resource.data.get('studentId', null) == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkOut', 'duration', 'status', 'updatedAt', 'autoClosedReason'])
+      );
+      allow delete: if isStaff();
     }
 
-    // ---------- settings ----------
+    // ---------- settings (students need read for QR code + display) ----------
     match /settings/{settingId} {
-      allow read: if isStaff();
+      allow read: if signedIn();
       allow write: if isManagerUp();
     }
 
@@ -127,7 +143,7 @@ service cloud.firestore {
 
     match /studentDocuments/{studentId} {
       allow read: if isStaff() || isSelf(studentId);
-      allow create: if signedIn();
+      allow create: if signedIn() && (isSelf(studentId) || isStaff());
       allow update, delete: if isStaff() || isSelf(studentId);
     }
 
