@@ -11,11 +11,11 @@ export const submitComplaint = async (student, category, description) => {
     validateComplaint(category, description);
 
     // Seat the student is sitting in RIGHT NOW (the one they chose at
-    // check-in today). Never falls back to an old assigned seat.
+    // check-in today). Uses the indexed studentId+status query.
     let seatNumber = "";
     try {
       const activeQ = query(collection(db, "attendance"),
-        where("studentId", "==", student.id), where("checkOut", "==", null));
+        where("studentId", "==", student.id), where("status", "==", "Active"));
       const activeSnap = await getDocs(activeQ);
       if (!activeSnap.empty) seatNumber = activeSnap.docs[0].data().seatNumber || "";
     } catch (_) { /* seat is optional context on a complaint */ }

@@ -2902,3 +2902,305 @@ body.light-mode .amenity-card-item:hover {
 .data-table th, .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 .data-table th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
 @media (max-width: 640px) { .card { padding: 1rem; } .data-table { display: block; overflow-x: auto; white-space: nowrap; } }
+
+/* ============ FIX: missing theme variables (used across the app) ============ */
+:root {
+  --danger: #f43f5e;
+  --warning: #f59e0b;
+  --accent-violet: #8b5cf6;
+  --accent-teal: #14b8a6;
+}
+
+/* ============ STUDENT PORTAL: theme-aware banners (dark first, light overrides) ============ */
+.sp-alert { font-size: 0.85rem; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: flex-start; gap: 0.75rem; border: 1px solid transparent; line-height: 1.5; }
+.sp-alert .sp-alert-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
+.sp-alert svg { flex-shrink: 0; margin-top: 2px; }
+.sp-alert-warn { color: #fcd34d; background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.45); }
+.sp-alert-warn .sp-alert-title { color: #fbbf24; }
+.sp-alert-info { color: #bae6fd; background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.45); }
+.sp-alert-info .sp-alert-title { color: #7dd3fc; }
+.sp-alert-ok { color: #a7f3d0; background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.45); }
+.sp-alert-ok .sp-alert-title { color: #6ee7b7; }
+.sp-alert-bad { color: #fecdd3; background: rgba(244,63,94,0.12); border-color: rgba(244,63,94,0.45); }
+.sp-alert-bad .sp-alert-title { color: #fda4af; }
+body.light-mode .sp-alert-warn { color: #78350f; background: #fef3c7; border-color: #f59e0b; }
+body.light-mode .sp-alert-warn .sp-alert-title { color: #92400e; }
+body.light-mode .sp-alert-info { color: #0c4a6e; background: #f0f9ff; border-color: #bae6fd; }
+body.light-mode .sp-alert-info .sp-alert-title { color: #0369a1; }
+body.light-mode .sp-alert-ok { color: #065f46; background: #f0fdf4; border-color: #6ee7b7; }
+body.light-mode .sp-alert-ok .sp-alert-title { color: #15803d; }
+body.light-mode .sp-alert-bad { color: #9f1239; background: #fff1f2; border-color: #fda4af; }
+body.light-mode .sp-alert-bad .sp-alert-title { color: #be123c; }
+
+/* Student identity card (replaces hardcoded baby-blue box) */
+.sp-idcard { border-radius: 12px; padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; color: #bae6fd; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.4); }
+.sp-idcard h4 { margin: 0; color: #7dd3fc; font-size: 1.1rem; }
+.sp-idcard .sp-idcard-sub { font-size: 0.85rem; color: #7dd3fc; opacity: 0.8; margin-top: 2px; }
+body.light-mode .sp-idcard { color: #0c4a6e; background: #f0f9ff; border-color: #bae6fd; }
+body.light-mode .sp-idcard h4 { color: #0369a1; }
+body.light-mode .sp-idcard .sp-idcard-sub { color: #0c4a6e; }
+
+/* Portal form controls follow the active theme */
+.sp-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-bright); outline: none; background: var(--bg-card); color: var(--text-primary); }
+.sp-input:focus { border-color: var(--accent-emerald); }
+.sp-divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+/* Notification icon aliases used by announcement types */
+.notif-icon.green { background: rgba(16,185,129,0.15); color: var(--accent-emerald); }
+.notif-icon.teal { background: rgba(20,184,166,0.15); color: var(--accent-teal, #14b8a6); }
+
+/* Student notifications page sections */
+.sp-notif-section { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 1.25rem 0 0.25rem; }
+.sp-notif-section:first-child { margin-top: 0; }
+.sp-notif-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
+
+/* ============ FIX: collapsed-sidebar badge + hover tooltips ============ */
+.sidebar.collapsed .nav-item { position: relative; }
+.sidebar.collapsed .nav-item .nav-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin: 0;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 9px;
+  padding: 0 4px;
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+/* Tooltip bubble for icon-only (collapsed) sidebar */
+.sidebar.collapsed .nav-item::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.95);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--border-bright);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 300;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.sidebar.collapsed .nav-item:hover::after,
+.sidebar.collapsed .nav-item:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+/* Never show an empty tooltip */
+.sidebar.collapsed .nav-item:not([data-tip])::after,
+.sidebar.collapsed .nav-item[data-tip=""]::after {
+  display: none;
+}
+
+/* ============ Modern animated sign-out button (all portals) ============ */
+.user-dropdown {
+  padding-bottom: 4px;
+}
+.dropdown-signout {
+  margin: 10px 12px 8px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #fff;
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
+  box-shadow: 0 4px 14px rgba(244,63,94,0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+  position: relative;
+  overflow: hidden;
+  width: calc(100% - 24px);
+}
+.dropdown-signout:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 8px 22px rgba(244,63,94,0.5);
+}
+.dropdown-signout:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 2px 8px rgba(244,63,94,0.4);
+}
+.dropdown-signout svg.so-arrow {
+  transition: transform 0.18s ease;
+  margin-left: auto;
+}
+.dropdown-signout:hover svg.so-arrow {
+  transform: translateX(4px);
+}
+.dropdown-signout::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -70%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.4), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.55s ease;
+  pointer-events: none;
+}
+.dropdown-signout:hover::after {
+  left: 135%;
+}
+@keyframes ddIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.topbar-user:hover .user-dropdown,
+.topbar-user:focus-within .user-dropdown {
+  animation: ddIn 0.18s ease;
+}
+
+/* ============ STUDENT PORTAL inner-page layouts (full-width, responsive) ============ */
+.sp-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  min-width: 0;
+}
+.sp-stack > .card {
+  margin-bottom: 0;
+}
+.sp-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1rem;
+  min-width: 0;
+}
+.sp-cols > .card {
+  margin-bottom: 0;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .sp-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Renew card: full width + wrapping renew row */
+.sp-renew-card {
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+  padding: 2rem;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+.sp-renew-flex {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.sp-renew-main {
+  flex: 1 1 320px;
+  min-width: min(340px, 100%);
+}
+.sp-qr {
+  flex: 0 1 220px;
+  min-width: min(220px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 1rem;
+  background: var(--bg-hover);
+  border-radius: 12px;
+  border: 1px dashed var(--border-bright);
+  box-sizing: border-box;
+  margin: 0 auto;
+}
+@media (max-width: 640px) {
+  .sp-renew-card {
+    padding: 1.25rem;
+  }
+}
+/* Self-admission form + summary sidebar stacks on narrow screens */
+.sp-admit-wrap {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.sp-admit-form {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+.sp-admit-side {
+  flex: 0 1 280px;
+  min-width: min(280px, 100%);
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+@media (max-width: 900px) {
+  .sp-admit-side {
+    position: static;
+    flex-basis: 100%;
+  }
+}
+
+/* ============ Compact right-aligned form actions + pay submit button ============ */
+.sp-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+.sp-actions .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding: 0.7rem 1rem;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .sp-actions {
+    flex-wrap: wrap;
+  }
+  .sp-actions .btn {
+    flex-basis: 100%;
+  }
+}
+.sp-pay-submit {
+  background: #22c55e;
+  border: 1px solid #22c55e;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(34,197,94,0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+.sp-pay-submit:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.07);
+  box-shadow: 0 8px 22px rgba(34,197,94,0.45);
+  background: #16a34a;
+}
+.sp-pay-submit:active {
+  transform: translateY(0) scale(0.98);
+}
+.sp-pay-submit:disabled {
+  opacity: 0.7;
+  transform: none;
+  cursor: wait;
+}

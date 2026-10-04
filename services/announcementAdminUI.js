@@ -1,4 +1,11 @@
-import { createAnnouncement, listenToAnnouncements, deleteAnnouncement, getAllStudentsForDropdown } from "./announcementService.js";
+import { createAnnouncement, listenToAnnouncements, deleteAnnouncement, getAllStudentsForDropdown, isAnnouncementLive } from "./announcementService.js";
+import { isNotifRead, markNotifRead, countUnread } from "./notificationReadState.js";
+
+// Cache of the latest announcements + whether read items are shown.
+// Clicking a notification marks it read (persisted per user) so it stays
+// gone; the badge counts only unread items.
+let lastAnnouncements = [];
+let showReadAdmin = false;
 
 /**
  * Initializes the announcements UI listener
@@ -9,21 +16,58 @@ export const initAnnouncementAdminUI = () => {
 
   notifList.innerHTML = `<div style="text-align:center; padding: 2rem;">Loading announcements...</div>`;
 
-  listenToAnnouncements((announcements) => {
-    // Update badges
-    const count = announcements.length;
-    document.querySelectorAll('.nav-badge').forEach(badge => {
-      badge.textContent = count;
-      badge.style.display = count > 0 ? 'inline-block' : 'none';
+  // One delegated click handler: clicking a notification (not its buttons)
+  // marks it read so it disappears; Delete still deletes permanently.
+  if (!notifList.dataset.wired) {
+    notifList.dataset.wired = "1";
+    notifList.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      const item = e.target.closest("[data-notif-id]");
+      if (!item) return;
+      markNotifRead(item.dataset.notifId);
+      renderAnnouncementList();
     });
+  }
 
-    if (count === 0) {
-      notifList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted);">No announcements scheduled.</div>`;
-      return;
-    }
+  listenToAnnouncements((announcements) => {
+    lastAnnouncements = Array.isArray(announcements) ? announcements : [];
+    renderAnnouncementList();
+  });
+};
+
+const renderAnnouncementList = () => {
+  const notifList = document.querySelector("#page-notifications .notif-list");
+  if (!notifList) return;
+
+  const announcements = lastAnnouncements;
+  const unreadIds = announcements.map(a => `ann_${a.id}`);
+  const unread = countUnread(unreadIds);
+  const readCount = announcements.length - unread;
+
+  // Update badges with the UNREAD count only
+  document.querySelectorAll('.nav-badge').forEach(badge => {
+    badge.textContent = unread > 9 ? "9+" : String(unread);
+    badge.style.display = unread > 0 ? 'inline-block' : 'none';
+  });
+
+  if (announcements.length === 0) {
+    notifList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted);">No announcements scheduled.</div>`;
+    renderDashboardBanner([]);
+    return;
+  }
+
+  const visible = showReadAdmin ? announcements : announcements.filter(a => !isNotifRead(`ann_${a.id}`));
+  const toggle = readCount > 0
+    ? `<div style="text-align:center; padding:0.5rem;"><button class="btn btn-ghost btn-sm" onclick="window.toggleReadAnnouncements()">${showReadAdmin ? "Hide read" : `Show read (${readCount})`}</button></div>`
+    : "";
+
+  if (visible.length === 0) {
+    notifList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted);">All caught up — no unread announcements.</div>` + toggle;
+    return;
+  }
 
     let html = "";
-    announcements.forEach(a => {
+    visible.forEach(a => {
       // Icon depending on type
       let iconHtml = "";
       let iconClass = "";
@@ -38,29 +82,66 @@ export const initAnnouncementAdminUI = () => {
         iconHtml = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`;
       }
 
-      const dateStr = a.createdAt?.seconds 
-        ? new Date(a.createdAt.seconds * 1000).toLocaleString() 
+      const dateStr = a.createdAt?.seconds
+        ? new Date(a.createdAt.seconds * 1000).toLocaleString()
         : "Just now";
 
       const scheduledStr = a.scheduledFor ? `Scheduled for: ${new Date(a.scheduledFor).toLocaleString()}` : "";
+      // Admins see everything (they manage the schedule); future items get a
+      // chip so it's obvious they are NOT live for students yet.
+      const live = isAnnouncementLive(a);
+      const schedChip = !live
+        ? `<span style="font-size:10px; font-weight:700; padding:2px 8px; background:rgba(245,158,11,.15); color:var(--accent-amber); border:1px solid rgba(245,158,11,.4); border-radius:999px; margin-left:6px;">⏳ SCHEDULED</span>`
+        : "";
 
       html += `
-        <div class="notif-item">
+        <div class="notif-item" data-notif-id="ann_${a.id}" title="Click to mark as read">
           <div class="notif-icon ${iconClass}">${iconHtml}</div>
           <div class="notif-content" style="flex: 1;">
             <div style="display:flex; justify-content:space-between;">
               <div class="notif-title">${a.title}</div>
-              <button class="btn btn-ghost" style="padding:2px 5px; color:var(--danger);" onclick="window.deleteAnnouncementHandler('${a.id}')" data-i18n="btn.delete">${window.t ? window.t("btn.delete") : "Delete"}</button>
+              <button class="btn btn-ghost" style="padding:2px 5px; color:var(--danger);" onclick="event.stopPropagation(); window.deleteAnnouncementHandler('${a.id}')" data-i18n="btn.delete">${window.t ? window.t("btn.delete") : "Delete"}</button>
             </div>
             <div class="notif-body">${a.message}</div>
-            <div class="notif-time">${scheduledStr ? scheduledStr : 'Sent: ' + dateStr} · Audience: ${a.audience}</div>
+            <div class="notif-time">${scheduledStr ? scheduledStr : 'Sent: ' + dateStr} · Audience: ${a.audience}${schedChip}</div>
           </div>
         </div>
       `;
     });
-    notifList.innerHTML = html;
-  });
+    notifList.innerHTML = html + toggle;
+  renderDashboardBanner(announcements);
 };
+
+/**
+ * Dashboard banner shows the latest LIVE announcement, or hides entirely
+ * when there is nothing to show (no more hardcoded "Diwali" text).
+ */
+const renderDashboardBanner = (announcements) => {
+  const card = document.getElementById("dashboard-announcement");
+  if (!card) return;
+  const live = (announcements || []).filter(isAnnouncementLive);
+  if (live.length === 0) {
+    card.style.display = "none";
+    return;
+  }
+  const latest = live[0];
+  // textContent (not innerHTML) so announcement text can never inject markup.
+  const titleEl = document.getElementById("dash-ann-title");
+  const textEl = document.getElementById("dash-ann-text");
+  if (titleEl) titleEl.textContent = latest.title || "Announcement";
+  if (textEl) textEl.textContent = latest.message || "";
+  card.style.display = "";
+};
+
+window.toggleReadAnnouncements = () => {
+  showReadAdmin = !showReadAdmin;
+  renderAnnouncementList();
+};
+
+// Re-render once a minute so ⏳ SCHEDULED chips clear on time without refresh.
+if (typeof window !== "undefined" && !window.__adminAnnTimer) {
+  window.__adminAnnTimer = setInterval(() => { try { renderAnnouncementList(); } catch (_) {} }, 60000);
+}
 
 /**
  * Handles Audience Dropdown Change

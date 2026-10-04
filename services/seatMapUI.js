@@ -362,11 +362,13 @@ export const initSeatMapUI = async (mode, containerId, opts = {}) => {
 
   // Drop old non-plan seats ("2","3","4"… / R-names / dupes) so the map shows
   // only the A/B library plan. No-ops once the data is clean.
+  // Silent background maintenance — never toast on page load; the user did
+  // nothing to deserve a popup. Details go to the console.
   try {
     const clean = await cleanupNonPlanSeats();
     const changed = clean && clean.success ? ((clean.deleted || 0) + (clean.renamed || 0) + (clean.created || 0) + (clean.positioned || 0) + (clean.clearedStudents || 0) + (clean.fixedStudents || 0)) : 0;
-    if (changed > 0 && window.showToast) {
-      window.showToast(`Seat map fixed: ${clean.deleted || 0} old removed, ${clean.created || 0} created, ${clean.renamed || 0} renamed.`, "success");
+    if (changed > 0) {
+      console.info(`[seats] auto-cleanup: ${clean.deleted || 0} old removed, ${clean.created || 0} created, ${clean.renamed || 0} renamed.`);
     }
   } catch (e) { console.warn("Seat cleanup skipped:", e); }
 

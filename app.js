@@ -568,13 +568,26 @@ document.addEventListener('click', (e) => {
   }
 });
 
-window.addEventListener('languageChanged', syncLangUI);
+// ==================== COLLAPSED SIDEBAR TOOLTIPS ====================
+// Copies each nav item's text label into data-tip so the icon-only
+// (collapsed) sidebar shows a hover tooltip. Re-synced on language change.
+function syncNavTips() {
+  document.querySelectorAll('.nav-item[data-page]').forEach(item => {
+    const label = item.querySelector('span:not(.nav-badge)');
+    const text = label ? label.textContent.trim() : '';
+    if (text) item.setAttribute('data-tip', text);
+    else item.removeAttribute('data-tip');
+  });
+}
 
-// ==================== INIT ====================
+window.addEventListener('languageChanged', syncLangUI);
+window.addEventListener('languageChanged', syncNavTips);
+
 document.addEventListener('DOMContentLoaded', () => {
   const defaultPage = document.body.getAttribute('data-default-page') || 'dashboard';
   navigate(defaultPage);
   syncLangUI();
+  syncNavTips();
   // Stagger metric cards animation
   document.querySelectorAll('.metric-card').forEach((card, i) => {
     card.style.opacity = '0';

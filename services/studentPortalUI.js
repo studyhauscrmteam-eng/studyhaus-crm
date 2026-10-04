@@ -34,6 +34,32 @@ export const initStudentPortalUI = () => {
   document.getElementById("page-student-attendance").innerHTML = "";
   document.getElementById("page-student-complaints").innerHTML = "";
 
+  // Self-admission summary (new signups pick a plan inside THIS portal).
+  // Element-guarded: the portal summary card only has plan + amount.
+  window.updateSummary = () => {
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.innerText = txt; };
+    const planEl = document.getElementById("adm-plan");
+    const plans = window.availablePlansList || [];
+    if (!planEl || !planEl.value) {
+      set("summary-plan", "—"); set("summary-amount", "—");
+      set("summary-start", "—"); set("summary-ends", "—");
+      return;
+    }
+    const plan = plans.find(p => p.id === planEl.value);
+    if (!plan) return;
+    set("summary-plan", plan.planName || "—");
+    set("summary-amount", plan.price != null ? `₹${plan.price}` : "—");
+    const today = new Date();
+    set("summary-start", today.toLocaleDateString("en-GB"));
+    if (typeof plan.duration === "number") {
+      const e = new Date(today);
+      e.setDate(e.getDate() + plan.duration);
+      set("summary-ends", e.toLocaleDateString("en-GB"));
+    } else {
+      set("summary-ends", "Custom");
+    }
+  };
+
   unsubscribePortal = listenToStudentPortalData(async (studentData) => {
     currentStudent = studentData;
 
@@ -80,6 +106,9 @@ export const initStudentPortalUI = () => {
         });
       } catch (e) { console.warn("[portal] renewals listener:", e); currentRenewals = []; }
     }
+
+    // Desk announcements for the notifications bell (student-safe renderer).
+    subscribeStudentAnnouncements();
 
     renderPortal();
   }, (errorMsg) => {
@@ -180,78 +209,7 @@ export const initStudentPortalUI = () => {
     }
   };
 
-  // Generate PDF wrapper
-  window.generateMyAttendancePDF = async () => {
-    if (!currentAttendance || currentAttendance.length === 0) return;
-    const res = await generateAttendancePDF(currentAttendance, currentStudent.name, window.t);
-    if (!res.success) window.showToast((window.t ? window.t('Failed to generate PDF: ') : "Failed to generate PDF: ") + res.error, "error");
-  };
-
-  window.generateMyPaymentsPDF = async () => {
-    if (!currentPayments || currentPayments.length === 0) return;
-    const res = await import("./pdfService.js").then(m => m.generatePaymentPDF(currentPayments, currentStudent.name, window.t));
-    if (!res.success) window.showToast((window.t ? window.t('Failed to generate PDF: ') : "Failed to generate PDF: ") + res.error, "error");
-  };
-
-  // --- Complaints Logic ---
-  window.showNewComplaintModal = () => {
-    document.getElementById("new-complaint-modal").showModal();
-  };
-
-  window.submitNewComplaint = async () => {
-    const title = document.getElementById("complaint-title").value;
-    const desc = document.getElementById("complaint-desc").value;
-    if (!title || !desc) return window.showToast(window.t ? window.t('Please fill all fields.') : "Please fill all fields.", "warning");
-
-    const btn = document.getElementById("btn-submit-complaint");
-    btn.innerHTML = "Submitting...";
-    btn.disabled = true;
-
-    try {
-      const res = await submitComplaint(currentStudent.id, currentStudent.name, title, desc);
-      if (res.success) {
-        window.showToast(window.t ? window.t('Complaint Submitted Successfully!') : "Complaint Submitted Successfully!", "success");
-        document.getElementById("new-complaint-modal").close();
-      } else {
-        window.showToast((window.t ? window.t('Failed: ') : "Failed: ") + res.error, "error");
-      }
-    } catch (e) {
-      window.showToast((window.t ? window.t('Failed: ') : "Failed: ") + e.message, "error");
-    } finally {
-      btn.innerHTML = "Submit Complaint";
-      btn.disabled = false;
-    }
-  };
-
-  // --- Payment Submission Logic ---
-  window.showNewPaymentModal = () => {
-    document.getElementById("new-payment-modal").showModal();
-  };
-
-  window.submitNewPaymentRequest = async () => {
-    const txnId = document.getElementById("pay-req-txnid").value;
-    if (!txnId) return window.showToast(window.t ? window.t('Please enter the Transaction ID.') : "Please enter the Transaction ID.", "error");
-
-    const btn = document.getElementById("btn-submit-payment-req");
-    btn.innerHTML = "Submitting...";
-    btn.disabled = true;
-
-    try {
-      const res = await submitPaymentRequest(currentStudent.id, currentStudent.name, currentStudent.planName, txnId);
-      if (res.success) {
-        window.showToast(window.t ? window.t('Payment Request Submitted Successfully!') : "Payment Request Submitted Successfully!", "success");
-        document.getElementById("new-payment-modal").close();
-      } else {
-        window.showToast((window.t ? window.t('Failed: ') : "Failed: ") + res.error, "error");
-      }
-    } catch (e) {
-      window.showToast((window.t ? window.t('Failed: ') : "Failed: ") + e.message, "error");
-    } finally {
-      btn.innerHTML = "Submit Request";
-      btn.disabled = false;
-    }
-  };
-
+  // Generate PDF of my attendance (used by the Attendance page button)
   window.handleDownloadPDF = async () => {
     if (!currentStudent || !currentAttendance) return;
     const btn = document.getElementById("btn-pdf");
@@ -381,6 +339,236 @@ window.calculatePaymentAmount = async () => {
   };
 };
 
+/**
+ * Makes the student shell real: sidebar/topbar show THIS student's name and
+ * photo, the notification badge counts their pending payments + open
+ * complaints, and the admin global-search box is hidden (students have no
+ * global search — their tables are on their own pages).
+ */
+const syncStudentChrome = (s, photoUrl, notifCount) => {
+  try {
+    const name = s.name || "Student";
+    const initials = name.substring(0, 2).toUpperCase();
+    const avatarInner = photoUrl
+      ? `<img src="${photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;" />`
+      : initials;
+
+    const setAvatar = (el) => {
+      if (!el) return;
+      el.innerHTML = avatarInner;
+      if (photoUrl) { el.style.overflow = "hidden"; el.style.padding = "0"; }
+    };
+    setAvatar(document.getElementById("current-user-avatar"));
+    setAvatar(document.getElementById("topbar-user-avatar"));
+
+    const nameEl = document.getElementById("current-user-name");
+    const topbarNameEl = document.getElementById("topbar-user-name");
+    if (nameEl) nameEl.textContent = name;
+    if (topbarNameEl) topbarNameEl.textContent = name;
+
+    const search = document.querySelector(".topbar-search");
+    if (search) search.style.display = "none";
+
+    const badge = document.querySelector('.nav-item[data-page="notifications"] .nav-badge');
+    if (badge) {
+      if (notifCount > 0) { badge.textContent = notifCount > 9 ? "9+" : String(notifCount); badge.style.display = ""; }
+      else { badge.textContent = "0"; badge.style.display = "none"; }
+    }
+    const bellDot = document.getElementById("topbar-notif-dot");
+    if (bellDot) bellDot.style.display = notifCount > 0 ? "" : "none";
+  } catch (e) { console.warn("[portal] chrome sync failed:", e); }
+};
+
+// Announcements broadcast by staff (read-only for students — no delete).
+let studentAnnouncements = [];
+let unsubscribeAnnouncements = null;
+let showReadStudent = false;
+
+const subscribeStudentAnnouncements = () => {
+  if (unsubscribeAnnouncements) return;
+  import("./announcementService.js").then(({ listenToAnnouncements }) => {
+    try {
+      unsubscribeAnnouncements = listenToAnnouncements((items) => {
+        studentAnnouncements = Array.isArray(items) ? items : [];
+        renderStudentNotifications();
+      });
+    } catch (e) { console.warn("[portal] announcements listener failed:", e); }
+  }).catch(e => console.warn("[portal] announcements module failed:", e));
+
+  // Re-check once a minute so announcements whose scheduled time arrives
+  // while the portal is open pop in without a refresh.
+  if (!window.__studentAnnTimer) {
+    window.__studentAnnTimer = setInterval(() => {
+      try { renderStudentNotifications(); } catch (_) {}
+    }, 60000);
+  }
+};
+
+// One delegated click handler: clicking a notification marks it read so it
+// stays gone (persisted per student). Action buttons navigate instead.
+const wireStudentNotifDismiss = () => {
+  const list = document.querySelector("#page-notifications .notif-list");
+  if (!list || list.dataset.wired) return;
+  list.dataset.wired = "1";
+  list.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button, a");
+    const item = e.target.closest("[data-notif-id]");
+    if (!item) return;
+    const { markNotifRead } = await import("./notificationReadState.js");
+    markNotifRead(item.dataset.notifId);
+    if (!btn) renderStudentNotifications();
+    // With a button: let its own onclick (navigate/checkout) run, then refresh.
+    else setTimeout(() => { try { renderStudentNotifications(); } catch (_) {} }, 300);
+  });
+};
+
+const escNotif = (v) => String(v == null ? "" : v)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const notifIconFor = (type) => {
+  if (type === "warning") return { cls: "red", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>` };
+  if (type === "success") return { cls: "emerald", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>` };
+  return { cls: "amber", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>` };
+};
+
+/**
+ * What "Notifications" means for a student: admin announcements addressed to
+ * them, plus personal alerts generated from their own live data (due fees,
+ * pending payments, complaint replies, active check-in). Rendered into the
+ * student's own #page-notifications list — the admin renderer never runs
+ * here, so without this the page stays empty.
+ */
+const renderStudentNotifications = () => {
+  const list = document.querySelector("#page-notifications .notif-list");
+  if (!list || !currentStudent) return;
+  wireStudentNotifDismiss();
+  const s = currentStudent;
+
+  const { monthsOwed, nextMonthLabel } = computeUnpaidMonths(s.paymentDueDate);
+  const pendings = (Array.isArray(currentPayments) ? currentPayments : []).filter(p => p.status === "pending");
+  const opens = (Array.isArray(currentComplaints) ? currentComplaints : []).filter(c => c.status === "Pending" || c.status === "In Progress");
+  const replied = opens.filter(c => c.resolutionNote);
+  const active = (Array.isArray(currentAttendance) ? currentAttendance : []).find(r => r.status === "Active");
+
+  const isRead = (id) => {
+    try {
+      const raw = localStorage.getItem(`readNotifs_${localStorage.getItem("userId") || "anon"}`) || "[]";
+      return JSON.parse(raw).includes(String(id));
+    } catch (_) { return false; }
+  };
+
+  let personal = "";
+  if (monthsOwed > 0) {
+    personal += `<div class="notif-item unread" data-notif-id="due" title="Click to dismiss">
+      <div class="notif-icon red">${notifIconFor("warning").svg}</div>
+      <div class="notif-content"><div class="notif-title">Fees overdue — ${monthsOwed} month${monthsOwed > 1 ? "s" : ""} pending</div>
+      <div class="notif-body">Clear ${escNotif(nextMonthLabel)} first, one month at a time.</div>
+      <div class="sp-notif-actions"><button class="btn btn-primary btn-sm" onclick="navigate('student-payments')">Pay now</button></div></div></div>`;
+  }
+  pendings.slice(0, 3).forEach(p => {
+    personal += `<div class="notif-item unread" data-notif-id="pay_${p.id}" title="Click to dismiss">
+      <div class="notif-icon amber">${notifIconFor("info").svg}</div>
+      <div class="notif-content"><div class="notif-title">Payment ₹${Number(p.amount) || 0} awaiting approval</div>
+      <div class="notif-body">Txn ${escNotif(p.transactionId || "—")} · submitted ${p.date ? new Date(p.date).toLocaleDateString() : "recently"}. The desk will approve it shortly.</div></div></div>`;
+  });
+  replied.forEach(c => {
+    personal += `<div class="notif-item unread" data-notif-id="creply_${c.id}" title="Click to dismiss">
+      <div class="notif-icon emerald">${notifIconFor("success").svg}</div>
+      <div class="notif-content"><div class="notif-title">Update on your complaint: ${escNotif(c.category || "General")}</div>
+      <div class="notif-body">Admin: ${escNotif(c.resolutionNote)}</div>
+      <div class="sp-notif-actions"><button class="btn btn-ghost btn-sm" onclick="navigate('student-complaints')">View</button></div></div></div>`;
+  });
+  (opens.filter(c => !c.resolutionNote).slice(0, 2)).forEach(c => {
+    personal += `<div class="notif-item" data-notif-id="copen_${c.id}" title="Click to dismiss">
+      <div class="notif-icon blue">${notifIconFor("info").svg}</div>
+      <div class="notif-content"><div class="notif-title">Complaint in queue: ${escNotif(c.category || "General")}</div>
+      <div class="notif-body">Status: ${escNotif(c.status)}. We will notify you here when it is resolved.</div></div></div>`;
+  });
+  if (active) {
+    personal += `<div class="notif-item" data-notif-id="active_${active.id}" title="Click to dismiss">
+      <div class="notif-icon emerald">${notifIconFor("success").svg}</div>
+      <div class="notif-content"><div class="notif-title">You are checked in — Seat ${escNotif(active.seatNumber || "—")}</div>
+      <div class="notif-body">Since ${active.checkIn ? new Date(active.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "today"}. Don't forget to check out when you leave.</div></div></div>`;
+  }
+
+  // Only announcements whose schedule has arrived (no date = immediate).
+  const annLive = (a) => {
+    if (!a || !a.scheduledFor) return true;
+    const t = new Date(a.scheduledFor).getTime();
+    return Number.isNaN(t) || t <= Date.now();
+  };
+  const visible = studentAnnouncements.filter(a => {
+    if (!annLive(a)) return false;
+    const aud = a.audience || "All Students";
+    if (aud === "Staff") return false;
+    if (aud === "Specific Students") return Array.isArray(a.targetStudentIds) && a.targetStudentIds.includes(s.id);
+    if (aud === "Active Students Only") return s.status === "Active";
+    return true;
+  });
+
+  let broadcast = "";
+  visible.slice(0, 20).forEach(a => {
+    const ic = notifIconFor(a.type);
+    const when = (a.createdAt && a.createdAt.seconds)
+      ? new Date(a.createdAt.seconds * 1000).toLocaleString() : "Just now";
+    broadcast += `<div class="notif-item" data-notif-id="ann_${a.id}" title="Click to dismiss">
+      <div class="notif-icon ${ic.cls}">${ic.svg}</div>
+      <div class="notif-content"><div class="notif-title">${escNotif(a.title || "Announcement")}</div>
+      <div class="notif-body">${escNotif(a.message || "")}</div>
+      <div class="notif-time">${escNotif(when)}${a.createdBy ? ` · ${escNotif(a.createdBy)}` : ""}</div></div></div>`;
+  });
+
+  // Hide anything already dismissed; offer to show it back.
+  personal = personal.replace(/<div class="notif-item([^"]*)" data-notif-id="([^"]+)"/g,
+    (m, cls, id) => (isRead(id) && !showReadStudent) ? `<div class="notif-item${cls} noshow" data-notif-id="${id}" style="display:none;"` : m);
+  broadcast = broadcast.replace(/<div class="notif-item" data-notif-id="([^"]+)"/g,
+    (m, id) => (isRead(id) && !showReadStudent) ? `<div class="notif-item" data-notif-id="${id}" style="display:none;"` : m);
+
+  const dismissedCount = (() => {
+    const ids = [];
+    if (monthsOwed > 0) ids.push("due");
+    pendings.slice(0, 3).forEach(p => ids.push(`pay_${p.id}`));
+    replied.forEach(c => ids.push(`creply_${c.id}`));
+    opens.filter(c => !c.resolutionNote).slice(0, 2).forEach(c => ids.push(`copen_${c.id}`));
+    if (active) ids.push(`active_${active.id}`);
+    visible.slice(0, 20).forEach(a => ids.push(`ann_${a.id}`));
+    return ids.filter(isRead).length;
+  })();
+
+  // Badge counts only unread personal items.
+  const unreadPersonal = (monthsOwed > 0 && !isRead("due") ? 1 : 0)
+    + pendings.filter(p => !isRead(`pay_${p.id}`)).length
+    + opens.filter(c => !isRead(c.resolutionNote ? `creply_${c.id}` : `copen_${c.id}`)).length;
+  const badge = document.querySelector('.nav-item[data-page="notifications"] .nav-badge');
+  if (badge) {
+    if (unreadPersonal > 0) { badge.textContent = unreadPersonal > 9 ? "9+" : String(unreadPersonal); badge.style.display = ""; }
+    else { badge.textContent = "0"; badge.style.display = "none"; }
+  }
+  const bellDot = document.getElementById("topbar-notif-dot");
+  if (bellDot) bellDot.style.display = unreadPersonal > 0 ? "" : "none";
+
+  const toggle = dismissedCount > 0
+    ? `<div style="text-align:center; padding:0.5rem;"><button class="btn btn-ghost btn-sm" onclick="window.toggleStudentReadNotifs()">${showReadStudent ? "Hide read" : `Show dismissed (${dismissedCount})`}</button></div>`
+    : "";
+
+  if (!personal && !broadcast) {
+    list.innerHTML = `<div style="text-align:center; padding:2.5rem 1rem; color:var(--text-muted);">
+      <div style="font-size:2rem; margin-bottom:0.5rem;">🔔</div>
+      <div style="font-weight:600; color:var(--text-primary); margin-bottom:0.25rem;">All caught up</div>
+      <div style="font-size:0.85rem;">Fee reminders, payment updates and desk announcements will appear here.</div></div>`;
+    return;
+  }
+  list.innerHTML =
+    (personal ? `<div class="sp-notif-section">Needs your attention</div>${personal}` : "") +
+    (broadcast ? `<div class="sp-notif-section">Announcements from the desk</div>${broadcast}` : "") +
+    toggle;
+};
+
+window.toggleStudentReadNotifs = () => {
+  showReadStudent = !showReadStudent;
+  try { renderStudentNotifications(); } catch (_) {}
+};
+
 const renderPortal = () => {
   if (!currentStudent) return;
   // Listeners attach async — render as soon as the profile lands, using empty
@@ -416,9 +604,13 @@ const renderPortal = () => {
   } else {
     currentPayments.forEach(p => {
       let badgeClass = "badge-pending";
-      if (p.status === "approved") badgeClass = "badge-paid";
+      if (p.status === "approved" || p.status === "Completed") badgeClass = "badge-paid";
       if (p.status === "rejected") badgeClass = "badge-absent";
-      paymentsHtml += `<tr><td>${new Date(p.date).toLocaleDateString()}</td><td>${p.renewalPeriod} Mo.</td><td>₹${p.amount}</td><td>${p.transactionId}</td><td><span class="badge ${badgeClass}">${p.status.toUpperCase()}</span></td></tr>`;
+      const pDate = p.date ? new Date(p.date).toLocaleDateString() : "—";
+      const pPeriod = p.renewalPeriod != null && p.renewalPeriod !== "" ? `${p.renewalPeriod} Mo.` : (p.monthLabel || "—");
+      const pTxn = p.transactionId || "—";
+      const pStatus = String(p.status || "pending").toUpperCase();
+      paymentsHtml += `<tr><td>${pDate}</td><td>${pPeriod}</td><td>₹${Number(p.amount) || 0}</td><td>${pTxn}</td><td><span class="badge ${badgeClass}">${pStatus}</span></td></tr>`;
     });
   }
 
@@ -448,13 +640,13 @@ const renderPortal = () => {
     renewalsHtml = `<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No renewal history.</td></tr>`;
   } else {
     currentRenewals.forEach(r => {
-      const dateStr = r.createdAt ? new Date(r.createdAt.seconds * 1000).toLocaleDateString() : "Just now";
+      const dateStr = r.createdAt && r.createdAt.seconds ? new Date(r.createdAt.seconds * 1000).toLocaleDateString() : "Just now";
       renewalsHtml += `
         <tr>
           <td>${dateStr}</td>
-          <td>${r.newPlan}</td>
-          <td style="font-size:0.85rem;">${r.startDate} to ${r.endDate}</td>
-          <td class="amount">,${r.amount}</td>
+          <td>${r.newPlan || "—"}</td>
+          <td style="font-size:0.85rem;">${r.startDate || "—"} to ${r.endDate || "—"}</td>
+          <td class="amount">₹${Number(r.amount) || 0}</td>
         </tr>
       `;
     });
@@ -478,8 +670,8 @@ const renderPortal = () => {
           <p class="page-subtitle">Please fill out the admission form to enroll in a plan.</p>
         </div>
       </div>
-      <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
-        <div class="card" style="flex: 1; padding: 2rem; border-radius: 12px; background:var(--bg-card); border:1px solid var(--border);">
+      <div class="sp-admit-wrap">
+        <div class="card sp-admit-form" style="padding: 2rem; border-radius: 12px; background:var(--bg-card); border:1px solid var(--border);">
           <form id="admission-form" onsubmit="event.preventDefault(); window.showPaymentModal(); return false;">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
               <div class="form-group" style="margin:0;"><label style="font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px;">Full name <span style="color:#e53e3e;">*</span></label><input type="text" id="adm-name" required style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);" value="${sessionStorage.getItem('pendingName') || s.name || ''}" /></div>
@@ -512,12 +704,12 @@ const renderPortal = () => {
 
           </form>
         </div>
-        <div style="width: 280px; position: sticky; top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
+        <div class="sp-admit-side">
           <div class="card" style="padding: 1.5rem; background:var(--bg-hover); border:1px solid var(--border); border-radius: 12px; box-shadow: none;">
             <h4 style="font-size: 11px; font-weight: 700; color:var(--text-muted); letter-spacing: 0.5px; margin-bottom: 1rem;">SUMMARY</h4>
             <div style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary); margin-bottom: 12px;"><span>Plan</span><span id="summary-plan" style="color:var(--text-primary); font-weight: 600;">—</span></div>
             <div style="display: flex; justify-content: space-between; font-size: 13px; color:var(--text-secondary); margin-bottom: 12px;"><span>Amount</span><span id="summary-amount" style="color:var(--text-primary); font-weight: 600;">—</span></div>
-            <div style="height: 1px; background: #e2e8f0; margin: 12px 0;"></div>
+            <div class="sp-divider"></div>
             <button class="btn btn-primary" id="btn-submit-admission" onclick="document.getElementById('admission-form').requestSubmit()" style="width: 100%; padding: 12px; font-size: 14px;">Confirm Admission</button>
           </div>
         </div>
@@ -1029,10 +1221,30 @@ const renderPortal = () => {
       ? `<img src="${studentPhoto}" alt="${(s.name || "Student").replace(/"/g, "")}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(139,92,246,.15);color:var(--accent-violet);font-weight:700;font-size:1.75rem;">${initials}</div>`;
 
+    // ---- Live dashboard figures (all from this student's own Firestore docs) ----
+    const pendingPayments = currentPayments.filter(p => p.status === "pending");
+    const openComplaints = currentComplaints.filter(c => c.status === "Pending" || c.status === "In Progress");
+    const lastPayment = currentPayments[0] || null;
+    const lastSession = currentAttendance.find(r => r.status !== "Active") || null;
+    let liveToday = Number(studyHours.todayHours) || 0;
+    if (activeSession && activeSession.checkIn) {
+      liveToday = Math.round((liveToday + Math.max(0, (Date.now() - activeSession.checkIn) / 3600000)) * 100) / 100;
+    }
+    const checkinSince = activeSession && activeSession.checkIn
+      ? new Date(activeSession.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    const seatLabel = activeSession ? (activeSession.seatNumber || "—") : (s.seatNumber || "Not assigned");
+    const dueLabel = s.paymentDueDate
+      ? new Date(s.paymentDueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
+    const dueUrgent = daysRemaining <= 5;
+
+    // Keep the app chrome honest for students: real name + photo, live
+    // notification count, no admin search box.
+    syncStudentChrome(s, studentPhoto, pendingPayments.length + openComplaints.length);
+
     portalSection.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 data-i18n="studentPortal.welcome" data-i18n-args='{"name":"${s.name}"}'>${window.t ? window.t('studentPortal.welcome', { name: s.name }) : 'Welcome back, ' + s.name}</h1>
+          <h1>${window.t ? window.t("studentPortal.welcome", { name: s.name }) : "Welcome back, " + s.name}</h1>
           <p class="page-subtitle">Here is your personal study portal.</p>
         </div>
         <div style="display:flex; gap:1rem; align-items:center;">
@@ -1040,59 +1252,71 @@ const renderPortal = () => {
         </div>
       </div>
 
-      <!-- Top Dashboard Metrics -->
+      <!-- Live overview: profile / check-in state / study hours / subscription -->
       <div class="metrics-grid">
         <div class="metric-card" style="align-items: center; text-align: center;">
-          <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); background: var(--bg-card); margin-bottom: 1rem; box-shadow: 0 4px 12px rgba(5,150,105,0.2);">
+          <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); background: var(--bg-card); margin-bottom: 0.75rem; box-shadow: 0 4px 12px rgba(5,150,105,0.2); flex-shrink:0;">
             ${avatarHtml}
           </div>
           <div style="width: 100%;">
-            <div class="metric-label" data-i18n="studentPortal.plan">${window.t ? window.t('studentPortal.plan') : 'Membership Plan'}</div>
-            <div class="metric-value" style="font-size: 1.1rem;"><span data-i18n="studentPortal.none" style="display:${s.planName ? 'none' : 'inline'}">None</span><span style="display:${s.planName ? 'inline' : 'none'}">${(s.planName || '').toLowerCase()}</span></div>
-            ${s.profilePhotoUrl ? `<button class="btn btn-ghost btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.5rem; font-size: 0.75rem;">Change Photo</button>` : `<button class="btn btn-primary btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.5rem; font-size: 0.75rem;">Add Photo</button>`}
+            <div style="font-weight:700; font-size:1rem; color:var(--text-primary);">${s.name || "Student"}</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin:2px 0 6px;">${s.planName || "No plan"} · Seat ${seatLabel} · ${s.status || "—"}</div>
+            ${s.profilePhotoUrl || s.photoUrl
+              ? `<button class="btn btn-ghost btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.25rem; font-size: 0.75rem;">Change Photo</button>`
+              : `<button class="btn btn-primary btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.25rem; font-size: 0.75rem;">Add Photo</button>`}
           </div>
         </div>
         <div class="metric-card" style="align-items: center;">
-          <div class="metric-icon emerald"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></div>
+          <div class="metric-icon ${activeSession ? "emerald" : "amber"}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
           <div>
-            <div class="metric-label" data-i18n="studentPortal.status">${window.t ? window.t('studentPortal.status') : 'Status'}</div>
-            <div class="metric-value"><span data-i18n="studentPortal.pending" style="display:${s.status ? 'none' : 'inline'}">Pending</span><span style="display:${s.status ? 'inline' : 'none'}">${s.status || ''}</span></div>
+            <div class="metric-label">Right now</div>
+            <div class="metric-value" style="font-size:1.15rem;">${activeSession ? "Checked in" : "Not checked in"}</div>
+            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">${activeSession ? `Seat ${seatLabel} · since ${checkinSince}` : (s.seatNumber ? `Your seat: ${s.seatNumber}` : "Pick any free seat at check-in")}</div>
           </div>
         </div>
         <div class="metric-card" style="align-items: center;">
-          <div class="metric-icon amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
+          <div class="metric-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></div>
           <div>
-            <div class="metric-label" data-i18n="studentPortal.daysRem">${window.t ? window.t('studentPortal.daysRem') : 'Days Remaining'}</div>
-            <div class="metric-value" style="color: ${daysRemaining < 5 ? 'var(--danger)' : 'inherit'}">${daysRemaining} <span data-i18n="studentPortal.days">Days</span></div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;"><span data-i18n="studentPortal.due">Due:</span> ${s.paymentDueDate || 'N/A'}</div>
+            <div class="metric-label">Study hours</div>
+            <div class="metric-value" style="font-size:1.15rem;">${liveToday}h <span style="font-size:0.75rem; font-weight:500; color:var(--text-muted);">today</span></div>
+            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">${studyHours.monthlyHours || 0}h this month · ${studyHours.totalHours || 0}h total</div>
+          </div>
+        </div>
+        <div class="metric-card" style="align-items: center;">
+          <div class="metric-icon ${dueUrgent ? "red" : "teal"}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg></div>
+          <div>
+            <div class="metric-label">Subscription</div>
+            <div class="metric-value" style="font-size:1.15rem; color:${dueUrgent ? "var(--danger)" : "inherit"};">${daysRemaining} days left</div>
+            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">Due ${dueLabel}${pendingPayments.length ? ` · ${pendingPayments.length} payment${pendingPayments.length > 1 ? "s" : ""} pending` : " · all clear"}</div>
           </div>
         </div>
       </div>
       
-      <div style="margin-top: 2rem;">
-        <h3 style="margin-bottom: 1rem;" data-i18n="studentPortal.quickLinks">${window.t ? window.t('studentPortal.quickLinks') : 'Quick Links'}</h3>
-        <div class="dashboard-grid">
-          <div class="card" style="cursor: pointer; display: flex; align-items: center; gap: 1rem;" onclick="navigate('student-payments')">
-            <div style="width: 40px; height: 40px; border-radius: 50%; background: #8b5cf6; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 24 24" width="20" height="20" stroke="white" stroke-width="2" fill="none"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-            <div>
-              <h4 style="margin: 0;" data-i18n="studentPortal.paymentsTitle">${window.t ? window.t('studentPortal.paymentsTitle') : 'Payments & Renewals'}</h4>
-              <div style="font-size: 0.85rem; color: var(--text-muted);">${window.t ? window.t('studentPortal.paymentsDesc') : 'Submit payments and view history'}</div>
-            </div>
-          </div>
-          <div class="card" style="cursor: pointer; display: flex; align-items: center; gap: 1rem;" onclick="navigate('student-attendance')">
-            <div style="width: 40px; height: 40px; border-radius: 50%; background: #10b981; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 24 24" width="20" height="20" stroke="white" stroke-width="2" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-            <div>
-              <h4 style="margin: 0;" data-i18n="studentPortal.attendanceTitle">${window.t ? window.t('studentPortal.attendanceTitle') : 'Attendance'}</h4>
-              <div style="font-size: 0.85rem; color: var(--text-muted);">${window.t ? window.t('studentPortal.attendanceDesc') : 'View check-ins and hours'}</div>
-            </div>
-          </div>
-          <div class="card" style="cursor: pointer; display: flex; align-items: center; gap: 1rem;" onclick="navigate('student-complaints')">
-            <div style="width: 40px; height: 40px; border-radius: 50%; background: #ef4444; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg viewBox="0 0 24 24" width="20" height="20" stroke="white" stroke-width="2" fill="none"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-            <div>
-              <h4 style="margin: 0;" data-i18n="studentPortal.complaintsTitle">${window.t ? window.t('studentPortal.complaintsTitle') : 'Complaints'}</h4>
-              <div style="font-size: 0.85rem; color: var(--text-muted);">${window.t ? window.t('studentPortal.complaintsDesc') : 'Report issues and track status'}</div>
-            </div>
-          </div>
+      <div class="dashboard-grid" style="margin-top: 1.25rem;">
+        <div class="card">
+          <div class="card-header"><h3>Recent check-ins</h3><button class="btn btn-ghost btn-sm" onclick="navigate('student-attendance')">View all</button></div>
+          ${currentAttendance.length === 0
+            ? `<div style="text-align:center; color:var(--text-muted); padding:1.5rem 0;">No check-ins yet — use Check-In Now when you arrive.</div>`
+            : `<table class="data-table"><thead><tr><th>Date</th><th>Seat</th><th>In</th><th>Out</th><th>Status</th></tr></thead><tbody>${currentAttendance.slice(0, 5).map(r => {
+                const cIn = r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+                const cOut = r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (r.status === "Active" ? "In now" : "—");
+                const badge = r.status === "Active" ? `<span class="badge badge-pending">Active</span>` : `<span class="badge badge-paid">Done</span>`;
+                return `<tr><td>${r.date || "—"}</td><td>${r.seatNumber || "—"}</td><td>${cIn}</td><td>${cOut}</td><td>${badge}</td></tr>`;
+              }).join("")}</tbody></table>`}
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Payments</h3><button class="btn btn-ghost btn-sm" onclick="navigate('student-payments')">Pay / history</button></div>
+          ${lastPayment
+            ? `<div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.75rem;">Last: <strong style="color:var(--text-primary);">₹${Number(lastPayment.amount) || 0}</strong> · ${lastPayment.status || "pending"} · ${lastPayment.date ? new Date(lastPayment.date).toLocaleDateString() : "—"}</div>`
+            : `<div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;">No payments yet.</div>`}
+          ${pendingPayments.length
+            ? `<div class="sp-alert sp-alert-warn" style="margin-bottom:0.75rem;"><div><div class="sp-alert-title">${pendingPayments.length} payment${pendingPayments.length > 1 ? "s" : ""} awaiting approval</div><div>Pay the UPI ID on the Payments page and the desk will approve it.</div></div></div>`
+            : `<div class="sp-alert sp-alert-ok" style="margin-bottom:0.75rem;"><div><div class="sp-alert-title">Subscription ${dueUrgent ? `ends ${dueLabel} — renew soon` : `valid till ${dueLabel}`}</div><div>${dueUrgent ? "Pay now to avoid losing your seat." : "You are all paid up."}</div></div></div>`}
+          ${openComplaints.length
+            ? `<div style="font-size:0.85rem; color:var(--text-secondary);">${openComplaints.length} open complaint${openComplaints.length > 1 ? "s" : ""} — <a href="#" onclick="navigate('student-complaints'); return false;" style="color:var(--primary);">track here</a>.</div>`
+            : lastSession
+              ? `<div style="font-size:0.85rem; color:var(--text-muted);">Last visit: ${lastSession.date || "—"}${lastSession.seatNumber ? ` · Seat ${lastSession.seatNumber}` : ""} · ${lastSession.duration ? lastSession.duration + "h" : "—"}.</div>`
+              : ""}
         </div>
       </div>
       
@@ -1133,62 +1357,64 @@ const renderPortal = () => {
       </div>
     </div>
     
-    <div class="form-grid" style="margin-top: 1rem;">
-      <div style="display: flex; flex-direction: column; gap: 2rem; grid-column: span 2;">
+    <div class="sp-stack">
+      <div class="sp-stack" style="margin-top:0;">
         <!-- Submit Payment Request -->
-        <div class="card" style="border: none; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); max-width: 800px; padding: 2rem;">
-          <div style="display: flex; align-items: center; margin-bottom: 1.5rem; gap: 0.75rem; color: #0369a1;">
+        <div class="card sp-renew-card">
+          <div style="display: flex; align-items: center; margin-bottom: 1.5rem; gap: 0.75rem; color: var(--primary);">
             <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             <h3 style="margin: 0; font-size: 1.25rem;">Renew Subscription</h3>
           </div>
 
           ${_monthsOwed > 0 ? `
-          <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: flex-start; gap: 0.75rem;">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#d97706" stroke-width="2" style="flex-shrink:0; margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div class="sp-alert sp-alert-warn">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             <div>
-              <div style="font-weight: 700; color: #92400e; font-size: 0.9rem; margin-bottom: 4px;">⚠ ${_monthsOwed} Unpaid Month${_monthsOwed > 1 ? 's' : ''} Detected</div>
-              <div style="font-size: 0.85rem; color: #78350f; line-height: 1.5;">Your fees are overdue. You must clear them <strong>one month at a time</strong>, starting from the oldest. Currently paying for: <strong>${_nextMonthLabel}</strong>.</div>
+              <div class="sp-alert-title">⚠ ${_monthsOwed} Unpaid Month${_monthsOwed > 1 ? 's' : ''} Detected</div>
+              <div>Your fees are overdue. You must clear them <strong>one month at a time</strong>, starting from the oldest. Currently paying for: <strong>${_nextMonthLabel}</strong>.</div>
             </div>
           </div>
           ` : ''}
 
-          <div style="display:flex; gap: 2rem; align-items:flex-start; flex-wrap: wrap;">
+          <div class="sp-renew-flex">
             <!-- LEFT SIDE: Form & Details -->
-            <div style="flex: 1; min-width: 350px;">
+            <div class="sp-renew-main">
               
               <!-- Student Info Block -->
-              <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                <div class="avatar" style="width: 50px; height: 50px; background: var(--primary); font-size: 1.2rem;">${initials}</div>
+              <div class="sp-idcard">
+                ${(s.profilePhotoUrl || s.photoUrl)
+                  ? `<div style="width: 50px; height: 50px; border-radius:50%; overflow:hidden; flex-shrink:0;"><img src="${s.profilePhotoUrl || s.photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" /></div>`
+                  : `<div class="avatar" style="width: 50px; height: 50px; background: var(--primary); font-size: 1.2rem;">${initials}</div>`}
                 <div>
-                  <h4 style="margin: 0; color: #0369a1; font-size: 1.1rem;">${s.name}</h4>
-                  <div style="font-size: 0.85rem; color: #0c4a6e; margin-top:2px;">Phone: ${s.phone}</div>
+                  <h4>${s.name}</h4>
+                  <div class="sp-idcard-sub">Phone: ${s.phone || "—"}${s.seatNumber ? ` · Seat ${s.seatNumber}` : ""}</div>
                 </div>
               </div>
 
               <!-- Subscription Status -->
-              <div style="background:var(--bg-hover); border: 1px solid ${_monthsOwed > 0 ? '#fca5a5' : '#e2e8f0'}; border-radius: 12px; padding: 1rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-                <svg viewBox="0 0 24 24" width="24" height="24" stroke="${_monthsOwed > 0 ? '#dc2626' : '#64748b'}" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <div class="sp-alert ${_monthsOwed > 0 ? "sp-alert-bad" : "sp-alert-ok"}" style="align-items:center;">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                 <div>
-                  <div style="font-size: 0.75rem; font-weight: 600; color: ${_monthsOwed > 0 ? '#dc2626' : '#64748b'}; text-transform: uppercase;">Current Subscription Ends</div>
-                  <div style="font-size: 1rem; font-weight: 600; color: ${_monthsOwed > 0 ? '#dc2626' : '#334155'}; display: flex; align-items: center; gap: 8px;">
+                  <div class="sp-alert-title" style="font-size:0.75rem; letter-spacing:0.04em;">Current Subscription Ends</div>
+                  <div style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px;">
                     ${s.paymentDueDate ? new Date(s.paymentDueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
-                    ${_monthsOwed > 0 ? `<span style="font-size:0.75rem; padding:2px 8px; background:#fee2e2; color:#dc2626; border-radius:999px; font-weight:500;">Overdue</span>` : ''}
+                    ${_monthsOwed > 0 ? `<span style="font-size:0.75rem; padding:2px 8px; background:var(--danger); color:#fff; border-radius:999px; font-weight:500;">Overdue</span>` : ''}
                   </div>
                 </div>
               </div>
 
               <!-- Payment Period -->
               <div style="margin-bottom: 1.5rem;">
-                <label style="font-size: 0.75rem; font-weight: 600; color: ${_monthsOwed > 0 ? '#dc2626' : '#16a34a'}; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Payment Period</label>
-                <div style="background: ${_monthsOwed > 0 ? '#fff7ed' : '#f0fdf4'}; border: 1px solid ${_monthsOwed > 0 ? '#fed7aa' : '#bbf7d0'}; border-radius: 12px; padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Payment Period</label>
+                <div class="sp-alert ${_monthsOwed > 0 ? "sp-alert-warn" : "sp-alert-ok"}" style="padding:1.25rem 1.5rem; align-items:center; justify-content:space-between; margin-bottom:0;">
                   <div style="text-align: center; flex:1;">
-                    <div style="font-size: 0.75rem; font-weight: 600; color: ${_monthsOwed > 0 ? '#ea580c' : '#16a34a'};">▶ START</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: ${_monthsOwed > 0 ? '#c2410c' : '#15803d'}; margin-top: 6px;" id="payment-start-date">${_monthsOwed > 0 ? _nextStartStr : (s.paymentDueDate ? new Date(s.paymentDueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today')}</div>
+                    <div class="sp-alert-title" style="font-size:0.75rem;">▶ START</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; margin-top: 6px;" id="payment-start-date">${_monthsOwed > 0 ? _nextStartStr : (s.paymentDueDate ? new Date(s.paymentDueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today')}</div>
                   </div>
-                  <div style="color: ${_monthsOwed > 0 ? '#fdba74' : '#86efac'}; font-size: 1.5rem; margin: 0 1rem; user-select: none;">→</div>
+                  <div style="font-size: 1.5rem; margin: 0 1rem; user-select: none; opacity:0.6;">→</div>
                   <div style="text-align: center; flex:1;">
-                    <div style="font-size: 0.75rem; font-weight: 600; color: ${_monthsOwed > 0 ? '#ea580c' : '#16a34a'};">■ END</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: ${_monthsOwed > 0 ? '#c2410c' : '#15803d'}; margin-top: 6px;" id="payment-end-date">${_monthsOwed > 0 ? _nextEndStr : '--'}</div>
+                    <div class="sp-alert-title" style="font-size:0.75rem;">■ END</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; margin-top: 6px;" id="payment-end-date">${_monthsOwed > 0 ? _nextEndStr : '--'}</div>
                   </div>
                 </div>
               </div>
@@ -1196,8 +1422,8 @@ const renderPortal = () => {
               <form onsubmit="event.preventDefault(); window.handlePaymentSubmit();" class="form-grid" style="gap: 1.5rem;">
                 ${_monthsOwed > 0 ? `
                 <div class="form-group">
-                  <label style="font-size: 0.75rem; font-weight: 600; color: #92400e; text-transform: uppercase;">Paying For (Locked)</label>
-                  <div style="padding: 10px 14px; border-radius: 8px; border: 1px solid #f59e0b; background: #fef3c7; color: #92400e; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                  <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Paying For (Locked)</label>
+                  <div class="sp-alert sp-alert-warn" style="padding:10px 14px; margin-bottom:0; font-weight:600; font-size:0.95rem; align-items:center;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     <span>${_nextMonthLabel}</span>
                   </div>
@@ -1205,8 +1431,8 @@ const renderPortal = () => {
                 </div>
                 ` : `
                 <div class="form-group">
-                  <label style="font-size: 0.75rem; font-weight: 600; color: #ef4444; text-transform: uppercase;">Duration *</label>
-                  <select id="payment-months" onchange="window.calculatePaymentAmount()" style="width:100%; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; outline:none; background: var(--bg-card);">
+                  <label style="font-size: 0.75rem; font-weight: 600; color: var(--danger); text-transform: uppercase;">Duration *</label>
+                  <select id="payment-months" onchange="window.calculatePaymentAmount()" class="sp-input">
                     <option value="1">1 Month</option>
                     <option value="2">2 Months</option>
                     <option value="3">3 Months</option>
@@ -1216,16 +1442,16 @@ const renderPortal = () => {
                 `}
                 <div class="form-group">
                   <label style="font-size: 0.75rem; font-weight: 600; color:var(--text-secondary); text-transform: uppercase;">Amount (₹)</label>
-                  <div id="payment-amount-display" style="font-size: 1.25rem; font-weight: 700; color: #334155; padding: 6px 0;">₹--</div>
+                  <div id="payment-amount-display" style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); padding: 6px 0;">₹--</div>
                   <input type="hidden" id="payment-amount" value="0" />
                 </div>
                 <div class="form-group full-width">
                   <label style="font-size: 0.75rem; font-weight: 600; color:var(--text-secondary); text-transform: uppercase;">UPI Transaction ID *</label>
-                  <input type="text" id="payment-txnid" required style="width:100%; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; outline:none;" placeholder="Enter your 12-digit UPI Txn ID" />
+                  <input type="text" id="payment-txnid" required class="sp-input" placeholder="Enter your 12-digit UPI Txn ID" />
                 </div>
-                <div class="form-group full-width" style="display:flex; gap: 1rem; margin-top: 1rem;">
-                  <button type="button" class="btn btn-ghost" style="flex: 1; background:var(--bg-hover); color:var(--text-secondary);" onclick="document.getElementById('payment-txnid').value=''">✕ Cancel</button>
-                  <button type="submit" id="btn-submit-payment" class="btn btn-primary" style="flex: 2; background: #22c55e; border-color: #22c55e; color: #fff;">
+                <div class="form-group full-width sp-actions">
+                  <button type="button" class="btn btn-ghost" title="Clear the transaction ID field" onclick="document.getElementById('payment-txnid').value=''">Clear</button>
+                  <button type="submit" id="btn-submit-payment" class="btn btn-primary sp-pay-submit">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                     ${_monthsOwed > 0 ? `Pay for ${_nextMonthLabel}` : 'Submit Renewal Request'}
                   </button>
@@ -1234,7 +1460,7 @@ const renderPortal = () => {
             </div>
 
             <!-- RIGHT SIDE: QR Code -->
-            <div style="width: 220px; display:flex; flex-direction: column; align-items:center; gap: 1rem; padding: 1.5rem 1rem; background:var(--bg-hover); border-radius: 12px; border: 1px dashed #cbd5e1;">
+            <div class="sp-qr">
               <h4 style="margin:0; font-size: 0.9rem; color:var(--text-secondary); text-align:center;">Scan to Pay</h4>
               <div style="width: 160px; height: 160px; background:var(--bg-card); border:1px solid var(--border); border-radius: 8px; display:flex; align-items:center; justify-content:center; overflow: hidden;">
                 <img src="/payment-qr.jpeg" class="payment-qr-img" alt="Scan to Pay" style="width: 100%; height: 100%; object-fit: contain;" onerror="this.onerror=null; this.src='https://via.placeholder.com/160?text=QR+Code';" />
@@ -1276,21 +1502,17 @@ const renderPortal = () => {
       </div>
     </div>
     
-    <div class="form-grid" style="margin-top: 1rem;">
-      <div style="display: flex; flex-direction: column; gap: 2rem; grid-column: span 2;">
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-            <h3 style="margin:0;">Recent Attendance</h3>
-            <button id="btn-pdf" class="btn btn-ghost" onclick="window.handleDownloadPDF()">Download PDF</button>
-          </div>
-          <table class="data-table"><thead><tr><th data-i18n="table.date">\${window.t ? window.t("table.date") : "Date"}</th><th>Check In</th><th>Check Out</th><th>Duration</th><th data-i18n="table.status">\${window.t ? window.t("table.status") : "Status"}</th></tr></thead><tbody>${historyHtml}</tbody></table>
+    <div class="sp-cols">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; gap:0.75rem; flex-wrap:wrap;">
+          <h3 style="margin:0;">Recent Attendance</h3>
+          <button id="btn-pdf" class="btn btn-ghost" onclick="window.handleDownloadPDF()">Download PDF</button>
         </div>
+        <table class="data-table"><thead><tr><th data-i18n="table.date">\${window.t ? window.t("table.date") : "Date"}</th><th>Check In</th><th>Check Out</th><th>Duration</th><th data-i18n="table.status">\${window.t ? window.t("table.status") : "Status"}</th></tr></thead><tbody>${historyHtml}</tbody></table>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 2rem; grid-column: span 1;">
-        <div class="card" style="padding: 1.5rem; text-align:center;">
-          <h4 style="margin-bottom: 0.5rem; color: var(--text-muted);">Today's Hours</h4>
-          <div style="font-size: 1.5rem; font-weight: 600; color: var(--primary);">${studyHours.todayHours}h</div>
-        </div>
+      <div class="card" style="padding: 1.5rem; text-align:center;">
+        <h4 style="margin-bottom: 0.5rem; color: var(--text-muted);">Today's Hours</h4>
+        <div style="font-size: 1.5rem; font-weight: 600; color: var(--primary);">${studyHours.todayHours}h</div>
       </div>
     </div>
   `;
@@ -1304,9 +1526,9 @@ const renderPortal = () => {
       </div>
     </div>
     
-    <div class="form-grid" style="margin-top: 1rem;">
-      <div style="display: flex; flex-direction: column; gap: 2rem; grid-column: span 2;">
-        <div class="card" style="border-left: 4px solid var(--danger); max-width: 600px;">
+    <div class="sp-stack">
+      <div class="sp-stack" style="margin-top:0;">
+        <div class="card" style="border-left: 4px solid var(--danger); max-width: 640px; width: 100%; box-sizing: border-box;">
           <h3 style="margin-bottom: 1.5rem;">Report an Issue</h3>
           <form onsubmit="event.preventDefault(); window.handleComplaintSubmit();" class="form-grid">
             <div class="form-group full-width">
@@ -1346,6 +1568,9 @@ const renderPortal = () => {
       });
     }
   });
+
+  // Keep the notifications page (bell + sidebar) in sync with live data.
+  try { renderStudentNotifications(); } catch (e) { console.warn("[portal] notifications render failed:", e); }
 
   setTimeout(() => { if (window.calculatePaymentAmount) window.calculatePaymentAmount(); }, 50);
 };

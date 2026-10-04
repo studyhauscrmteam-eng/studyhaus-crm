@@ -150,8 +150,10 @@ export const initAuthGuard = () => {
           if (topbarNameEl) topbarNameEl.textContent = displayName;
           if (roleEl) roleEl.textContent = role;
           if (topbarRoleEl) topbarRoleEl.textContent = role;
-          if (avatarEl) avatarEl.textContent = initials;
-          if (topbarAvatarEl) topbarAvatarEl.textContent = initials;
+          // Don't clobber a photo avatar already rendered by the portal —
+          // only write initials into text-only placeholders.
+          if (avatarEl && !avatarEl.querySelector("img")) avatarEl.textContent = initials;
+          if (topbarAvatarEl && !topbarAvatarEl.querySelector("img")) topbarAvatarEl.textContent = initials;
           if (greetEl) greetEl.textContent = `${timeGreeting}, ${displayName.split(" ")[0]}!`;
 
           // If on a protected page, check permissions

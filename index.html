@@ -298,17 +298,15 @@
 
             <div class="user-dropdown">
               <div class="dropdown-header">Signed In As <span id="topbar-user-role">Employee</span></div>
-              <div class="dropdown-item">Profile</div>
-              <div class="dropdown-item">Reading space settings</div>
-              <div class="dropdown-divider"></div>
-              <div class="dropdown-item" onclick="window.logout()">
+              <button class="dropdown-signout" onclick="window.logout()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                   <polyline points="16 17 21 12 16 7" />
                   <line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
-                Sign out
-              </div>
+                <span>Sign out</span>
+                <svg class="so-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+              </button>
             </div>
           </div>
         </div>
@@ -371,7 +369,7 @@
               <div class="metric-info">
                 <div class="metric-label">Today's collection</div>
                 <div class="metric-value" id="metric-earnings-today">Loading...</div>
-                <div class="metric-change positive">Live from Firestore</div>
+
               </div>
             </div>
             <div class="metric-card">
@@ -384,7 +382,7 @@
               <div class="metric-info">
                 <div class="metric-label">Monthly collection</div>
                 <div class="metric-value" id="metric-earnings-monthly">Loading...</div>
-                <div class="metric-change positive">Live from Firestore</div>
+
               </div>
             </div>
             <div class="metric-card">
@@ -399,7 +397,7 @@
               <div class="metric-info">
                 <div class="metric-label">Active students</div>
                 <div class="metric-value" id="metric-active-students">Loading...</div>
-                <div class="metric-change positive">Live from Firestore</div>
+
               </div>
             </div>
             <div class="metric-card">
@@ -425,7 +423,7 @@
               <div class="metric-info">
                 <div class="metric-label">Today's Expenses</div>
                 <div class="metric-value" id="metric-expenses-today">Loading...</div>
-                <div class="metric-change neutral">Live from Firestore</div>
+
               </div>
             </div>
             <div class="metric-card">
@@ -454,7 +452,7 @@
               <div class="metric-info">
                 <div class="metric-label">Today's Visitors</div>
                 <div class="metric-value" id="metric-visitors-today">Loading...</div>
-                <div class="metric-change neutral">Live from Firestore</div>
+
               </div>
             </div>
           </div>
@@ -486,8 +484,8 @@
             </div>
           </div>
 
-          <!-- Announcement Banner -->
-          <div class="announcement-card">
+          <!-- Announcement Banner (filled live; hidden when none) -->
+          <div class="announcement-card" id="dashboard-announcement" style="display:none;">
             <div class="ann-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -495,44 +493,10 @@
               </svg>
             </div>
             <div class="ann-content">
-              <div class="ann-title">Announcement scheduled</div>
-              <div class="ann-text">Diwali holiday notice will go out to all active students tomorrow at 8:00 AM.</div>
+              <div class="ann-title" id="dash-ann-title"></div>
+              <div class="ann-text" id="dash-ann-text"></div>
             </div>
             <button class="btn btn-ghost" onclick="navigate('notifications')">Manage notifications</button>
-          </div>
-
-          <!-- Gallery Section -->
-          <div class="card" style="margin-top: 1.5rem;">
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-              <h3>Reading Space Gallery</h3>
-              <button class="btn btn-ghost" onclick="window.toggleGallery()" id="btn-gallery-view-more">View
-                More</button>
-            </div>
-            <div class="gallery-grid" id="main-gallery"
-              style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
-              <!-- Initially visible -->
-              <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=600&q=80"
-                style="width: 100%; height: 150px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s;"
-                onclick="window.openSlideshow(0)" class="gallery-img" onmouseover="this.style.transform='scale(1.03)'"
-                onmouseout="this.style.transform='scale(1)'">
-              <img src="https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&w=600&q=80"
-                style="width: 100%; height: 150px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s;"
-                onclick="window.openSlideshow(1)" class="gallery-img" onmouseover="this.style.transform='scale(1.03)'"
-                onmouseout="this.style.transform='scale(1)'">
-              <img src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=600&q=80"
-                style="width: 100%; height: 150px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s;"
-                onclick="window.openSlideshow(2)" class="gallery-img" onmouseover="this.style.transform='scale(1.03)'"
-                onmouseout="this.style.transform='scale(1)'">
-              <!-- Hidden images for "View More" -->
-              <img src="https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=600&q=80"
-                style="width: 100%; height: 150px; object-fit: cover; border-radius: 8px; cursor: pointer; display: none; transition: transform 0.2s;"
-                onclick="window.openSlideshow(3)" class="gallery-img hidden-img"
-                onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
-              <img src="https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80"
-                style="width: 100%; height: 150px; object-fit: cover; border-radius: 8px; cursor: pointer; display: none; transition: transform 0.2s;"
-                onclick="window.openSlideshow(4)" class="gallery-img hidden-img"
-                onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
-            </div>
           </div>
         </div>
 
@@ -2535,67 +2499,6 @@
     }
   </script>
   <script src="app.js"></script>
-  <!-- Slideshow Modal -->
-  <div id="slideshow-modal"
-    style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 10000; align-items: center; justify-content: center; flex-direction: column;">
-    <button onclick="window.closeSlideshow()"
-      style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; font-size: 3rem; cursor: pointer; opacity: 0.8; transition: opacity 0.2s;"
-      onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">&times;</button>
-    <img id="slideshow-img" src=""
-      style="max-width: 90%; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);" />
-    <div style="margin-top: 1.5rem; display: flex; gap: 1rem;">
-      <button onclick="window.prevSlide()" class="btn btn-primary"
-        style="background: rgba(255,255,255,0.2); border-color: transparent; color: white; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; padding: 0;">&larr;</button>
-      <button onclick="window.nextSlide()" class="btn btn-primary"
-        style="background: rgba(255,255,255,0.2); border-color: transparent; color: white; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; padding: 0;">&rarr;</button>
-    </div>
-  </div>
-
-  <script>
-    // Gallery Logic
-    let currentSlideIndex = 0;
-    const galleryImages = [];
-
-    window.toggleGallery = () => {
-      const hiddenImgs = document.querySelectorAll('.gallery-img.hidden-img');
-      const btn = document.getElementById('btn-gallery-view-more');
-      let isShowing = false;
-      hiddenImgs.forEach(img => {
-        if (img.style.display === 'none') {
-          img.style.display = 'block';
-          isShowing = true;
-        } else {
-          img.style.display = 'none';
-        }
-      });
-      btn.innerText = isShowing ? 'View Less' : 'View More';
-    };
-
-    window.openSlideshow = (index) => {
-      // Gather all image sources currently in the gallery
-      galleryImages.length = 0;
-      document.querySelectorAll('.gallery-img').forEach(img => {
-        galleryImages.push(img.src);
-      });
-      currentSlideIndex = index;
-      document.getElementById('slideshow-img').src = galleryImages[currentSlideIndex];
-      document.getElementById('slideshow-modal').style.display = 'flex';
-    };
-
-    window.closeSlideshow = () => {
-      document.getElementById('slideshow-modal').style.display = 'none';
-    };
-
-    window.prevSlide = () => {
-      currentSlideIndex = (currentSlideIndex - 1 + galleryImages.length) % galleryImages.length;
-      document.getElementById('slideshow-img').src = galleryImages[currentSlideIndex];
-    };
-
-    window.nextSlide = () => {
-      currentSlideIndex = (currentSlideIndex + 1) % galleryImages.length;
-      document.getElementById('slideshow-img').src = galleryImages[currentSlideIndex];
-    };
-  </script>
 
   <script type="module" src="firebase-entry.js"></script>
 </body>

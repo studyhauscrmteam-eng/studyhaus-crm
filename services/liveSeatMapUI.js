@@ -60,30 +60,63 @@ const normalizeSeatNumber = (value) => {
   return m ? `${m[1]}${Number(m[2])}` : raw;
 };
 
-// Status colors for seats that are NOT currently present — mirrors the seat
-// map palette so Maintenance/Reserved/Reserved changes show up live here too.
+// Theme-aware status colors — mirrors seatMapUI's palette so the live map
+// follows the night/day toggle instead of staying light.
+const isLightTheme = () => !!(document.body && document.body.classList.contains("light-mode"));
+
 const liveStatusStyle = (status) => {
-  switch (status) {
-    case "Occupied":    return { bg: "#fef2f2", border: "1.5px solid #fecaca", color: "#991b1b" };
-    case "Reserved":    return { bg: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" };
-    case "Maintenance": return { bg: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af" };
-    case "Inactive":    return { bg: "#f8fafc", border: "1px dashed #cbd5e1", color: "#94a3b8" };
-    default:            return { bg: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" };
+  if (isLightTheme()) {
+    switch (status) {
+      case "Occupied":    return { bg: "#fef2f2", border: "1.5px solid #fecaca", color: "#991b1b" };
+      case "Reserved":    return { bg: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" };
+      case "Maintenance": return { bg: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e40af" };
+      case "Inactive":    return { bg: "#f8fafc", border: "1px dashed #cbd5e1", color: "#94a3b8" };
+      default:            return { bg: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" };
+    }
   }
+  switch (status) {
+    case "Occupied":    return { bg: "rgba(239,68,68,0.16)", border: "1.5px solid rgba(239,68,68,0.5)", color: "#f87171" };
+    case "Reserved":    return { bg: "rgba(245,158,11,0.16)", border: "1px solid rgba(245,158,11,0.45)", color: "#fbbf24" };
+    case "Maintenance": return { bg: "rgba(59,130,246,0.16)", border: "1px solid rgba(59,130,246,0.5)", color: "#60a5fa" };
+    case "Inactive":    return { bg: "rgba(148,163,184,0.08)", border: "1px dashed rgba(148,163,184,0.4)", color: "#94a3b8" };
+    default:            return { bg: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.45)", color: "#4ade80" };
+  }
+};
+
+// Present-seat card colors, also theme-aware.
+const livePresentStyle = () => isLightTheme()
+  ? { bg: "#fef2f2", border: "1.5px solid #fecaca", color: "#991b1b", sub: "#dc2626" }
+  : { bg: "rgba(239,68,68,0.16)", border: "1.5px solid rgba(239,68,68,0.5)", color: "#f87171", sub: "#fca5a5" };
+
+// Legend pill colors, theme-aware (same values as the seat cards above).
+const liveLegendStyle = (kind) => {
+  if (isLightTheme()) {
+    if (kind === "vacant") return "background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;";
+    if (kind === "present") return "background:#fef2f2; color:#991b1b; border:1px solid #fecaca;";
+    if (kind === "reserved") return "background:#fffbeb; color:#92400e; border:1px solid #fde68a;";
+    return "background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;";
+  }
+  if (kind === "vacant") return "background:rgba(34,197,94,0.14); color:#4ade80; border:1px solid rgba(34,197,94,0.45);";
+  if (kind === "present") return "background:rgba(239,68,68,0.16); color:#f87171; border:1px solid rgba(239,68,68,0.5);";
+  if (kind === "reserved") return "background:rgba(245,158,11,0.16); color:#fbbf24; border:1px solid rgba(245,158,11,0.45);";
+  return "background:rgba(59,130,246,0.16); color:#60a5fa; border:1px solid rgba(59,130,246,0.5);";
 };
 
 const fetchMissingPhotos = async (records) => {
   for (const rec of records) {
     if (studentPhotos[rec.studentId] === undefined) {
       try {
-        // Primary: studentDocuments/{id}.selfie (uploaded during admission)
+        // Primary: studentDocuments/{id}.profilePhoto (portal upload),
+        // then the admission selfie, then the denormalised student fields.
         const docsSnap = await getDoc(doc(db, "studentDocuments", rec.studentId));
-        let photoUrl = (docsSnap.exists() && docsSnap.data().selfie) ? docsSnap.data().selfie : null;
+        const dd = docsSnap.exists() ? docsSnap.data() : null;
+        let photoUrl = (dd && (dd.profilePhoto || dd.selfie)) ? (dd.profilePhoto || dd.selfie) : null;
 
-        // Fallback: students/{id}.selfieUrl
+        // Fallback: students/{id} denormalised photo fields
         if (!photoUrl) {
           const stuSnap = await getDoc(doc(db, "students", rec.studentId));
-          photoUrl = (stuSnap.exists() && stuSnap.data().selfieUrl) ? stuSnap.data().selfieUrl : null;
+          const sd = stuSnap.exists() ? stuSnap.data() : null;
+          photoUrl = (sd && (sd.profilePhotoUrl || sd.photoUrl || sd.selfieUrl)) || null;
         }
 
         studentPhotos[rec.studentId] = photoUrl; // null means "checked, no photo"
@@ -122,21 +155,21 @@ export const initLiveSeatMapInTab = (containerId) => {
       </div>
     </div>
 
-    <!-- Legend — matches regular Seat Map style -->
+    <!-- Legend — painted by paintLiveLegend() so it follows night/day theme -->
     <div class="seat-legend" style="display:flex; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap;">
-      <span class="legend-pill" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
+      <span class="legend-pill" id="live-legend-vacant" style="padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
         <span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
         <span data-i18n="liveSeat.vacant">Vacant</span>
       </span>
-      <span class="legend-pill" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
+      <span class="legend-pill" id="live-legend-present" style="padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
         <span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
         <span data-i18n="liveSeat.present">Present</span>
       </span>
-      <span class="legend-pill" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
+      <span class="legend-pill" id="live-legend-reserved" style="padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
         <span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
         Reserved
       </span>
-      <span class="legend-pill" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
+      <span class="legend-pill" id="live-legend-maint" style="padding:4px 12px; border-radius:999px; font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:6px;">
         <span style="width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
         Maintenance
       </span>
@@ -190,7 +223,31 @@ export const initLiveSeatMapInTab = (containerId) => {
   });
 
   startListeners();
+  paintLiveLegend();
 };
+
+// Paints the legend pills for the current theme (called on init + toggle).
+const paintLiveLegend = () => {
+  const pairs = [
+    ["live-legend-vacant", "vacant"],
+    ["live-legend-present", "present"],
+    ["live-legend-reserved", "reserved"],
+    ["live-legend-maint", "maint"],
+  ];
+  pairs.forEach(([id, kind]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.cssText += liveLegendStyle(kind);
+  });
+};
+
+// Re-paint seat colors when night/day theme toggles.
+if (typeof window !== "undefined" && !window.__liveSeatThemeObserver) {
+  window.__liveSeatThemeObserver = new MutationObserver(() => {
+    paintLiveLegend();
+    renderLiveMap();
+  });
+  if (document.body) window.__liveSeatThemeObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+}
 
 // ─────────────────────────────────────────────────────────────
 // FIRESTORE LISTENERS
@@ -280,21 +337,22 @@ const renderLiveMap = () => {
                        color:#fff; display:flex; align-items:center; justify-content:center;
                        font-size:12px; font-weight:700; flex-shrink:0;">${initial}</div>`;
 
+      const ps = livePresentStyle();
       return `
-        <div style="background:#fef2f2; border:1.5px solid #fecaca; color:#991b1b; border-radius:10px;
+        <div style="background:${ps.bg}; border:${ps.border}; color:${ps.color}; border-radius:10px;
                  width:100%; height:70px; box-sizing:border-box;
                  display:flex; flex-direction:column; align-items:center;
                  justify-content:center; gap:2px; cursor:default; overflow:hidden; padding:4px;
                  box-shadow:0 1px 3px rgba(239,68,68,0.12); position:relative;">
-          <div style="position:absolute; top:4px; left:4px; font-size:9px; font-weight:700; color:#dc2626; line-height:1;">${seatNumStr}</div>
+          <div style="position:absolute; top:4px; left:4px; font-size:9px; font-weight:700; color:${ps.sub}; line-height:1;">${seatNumStr}</div>
           <div style="display:flex; align-items:center; justify-content:center; position:relative; margin-top:6px;">
             ${avatarHtml}
             <div style="position:absolute; bottom:-1px; right:-2px; width:9px; height:9px;
                         background:#22c55e; border-radius:50%; border:1px solid #fff;"></div>
           </div>
-          <div style="font-size:9px; font-weight:600; color:#991b1b; max-width:100%; white-space:nowrap;
+          <div style="font-size:9px; font-weight:600; color:${ps.color}; max-width:100%; white-space:nowrap;
                       overflow:hidden; text-overflow:ellipsis; line-height:1; text-align:center;" title="${firstName}">${firstName}</div>
-          ${checkInTime ? `<div style="position:absolute; bottom:4px; right:4px; font-size:8px; color:#dc2626; font-weight:500;">${checkInTime}</div>` : ''}
+          ${checkInTime ? `<div style="position:absolute; bottom:4px; right:4px; font-size:8px; color:${ps.sub}; font-weight:500;">${checkInTime}</div>` : ''}
         </div>
       `;
     }

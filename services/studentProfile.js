@@ -16,6 +16,18 @@ let currentPage = 1;
 let pageSize = 10;
 let availablePlans = [];
 
+/**
+ * Single source of truth for a student's display photo.
+ * Students upload via the portal to `profilePhotoUrl`/`photoUrl`
+ * (denormalised) + `studentDocuments/{id}.profilePhoto`.
+ */
+export const getStudentPhotoUrl = (s) => {
+  if (!s) return null;
+  return s.profilePhotoUrl || s.photoUrl || s.selfieUrl || null;
+};
+
+export const escAttr = (v) => String(v == null ? "" : v).replace(/"/g, "&quot;");
+
 // ==========================================
 // INITIALIZATION
 // ==========================================
@@ -179,7 +191,9 @@ const renderTable = () => {
       <tr style="cursor:pointer;" onclick="window.openStudentProfile('${s.id}')">
         <td style="vertical-align: top; padding-top: 1rem; max-width: 220px; white-space: normal; word-wrap: break-word;">
           <div class="student-cell" style="align-items: flex-start;">
-            <div class="avatar-sm" style="background:var(--primary); margin-top: 2px;">${initials}</div>
+            ${(() => { const _ph = getStudentPhotoUrl(s); return _ph
+              ? `<div class="avatar-sm" style="margin-top: 2px; overflow:hidden; padding:0;"><img src="${_ph}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" /></div>`
+              : `<div class="avatar-sm" style="background:var(--primary); margin-top: 2px;">${initials}</div>`; })()}
             <div>
               ${nameHtml}
               <div class="sub-text" style="margin-top: 2px;">${s.phone || "No Phone"}</div>
@@ -307,9 +321,11 @@ const renderProfileModal = (s, role) => {
       </div>
       
       <div style="display: flex; gap: 1rem; margin-bottom: 2rem; align-items: center;">
-        <div id="sp-avatar-${s.id}" style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary); color: white; display:flex; align-items:center; justify-content:center; font-size: 24px; font-weight: bold; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+        ${(() => { const _ph = getStudentPhotoUrl(s); return _ph
+          ? `<div id="sp-avatar-${s.id}" style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); flex-shrink:0;"><img src="${_ph}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;display:block;" /></div>`
+          : `<div id="sp-avatar-${s.id}" style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary); color: white; display:flex; align-items:center; justify-content:center; font-size: 24px; font-weight: bold; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); flex-shrink:0;">
           ${s.name ? s.name.substring(0, 2).toUpperCase() : "ST"}
-        </div>
+        </div>`; })()}
         <div>
           <h3 style="margin: 0; font-size: 1.25rem;">${s.name}</h3>
           <div style="color: var(--text-muted);">${s.studentId || "No ID"} · ${s.status}</div>
@@ -511,16 +527,19 @@ const renderProfileModal = (s, role) => {
     }).catch(() => {});
   }
 
-  if (s.selfieUrl) {
-    loadStudentDocuments(s.id).then(docs => {
-      if (docs && docs.selfie) {
-        const avatarEl = document.getElementById(`sp-avatar-${s.id}`);
-        if (avatarEl) {
-          avatarEl.innerHTML = `<img src="${docs.selfie}" style="width:100%; height:100%; object-fit:cover;" alt="Photo" />`;
-        }
+  // Always try the canonical document store — the portal saves the photo to
+  // `studentDocuments/{id}.profilePhoto` (and denormalises it onto the
+  // student doc). Prefer profilePhoto, fall back to the admission selfie.
+  loadStudentDocuments(s.id).then(docs => {
+    if (docs && (docs.profilePhoto || docs.selfie)) {
+      const avatarEl = document.getElementById(`sp-avatar-${s.id}`);
+      if (avatarEl) {
+        const best = docs.profilePhoto || docs.selfie;
+        avatarEl.innerHTML = `<img src="${best}" style="width:100%; height:100%; object-fit:cover;" alt="Photo" />`;
+        avatarEl.style.background = "var(--bg-hover)";
       }
-    }).catch(err => console.error("Failed to load selfie", err));
-  }
+    }
+  }).catch(err => console.error("Failed to load photo", err));
 };
 
 window.submitStudentEdit = async (id) => {

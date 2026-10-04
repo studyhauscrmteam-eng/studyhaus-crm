@@ -30,6 +30,16 @@ export const createAnnouncement = async (data) => {
 };
 
 /**
+ * A future `scheduledFor` means "publish at this time". Live = no schedule,
+ * an unparseable schedule, or a schedule at/before now.
+ */
+export const isAnnouncementLive = (a, now = Date.now()) => {
+  if (!a || !a.scheduledFor) return true;
+  const t = new Date(a.scheduledFor).getTime();
+  return Number.isNaN(t) || t <= now;
+};
+
+/**
  * Gets all active students for dropdown selection
  */
 export const getAllStudentsForDropdown = async () => {
