@@ -172,18 +172,20 @@ const renderTable = () => {
     let nameHtml = s.name ? `<div class="name" style="line-height: 1.3;">${s.name}</div>` : `<div class="name">Unknown</div>`;
 
 
-    let leavingDateHtml = `<span style="color:var(--text-muted);">N/A</span>`;
+    let leavingDateHtml = `<span style="color:var(--text-muted);">—</span>`;
     if (s.plannedExitDate) {
       const exitD = new Date(s.plannedExitDate);
-      const diffTime = exitD - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays <= 3) {
-        leavingDateHtml = `<span class="badge" style="background:var(--danger); color:white; font-weight:600;">${s.plannedExitDate} (${diffDays < 0 ? 'Passed' : diffDays + 'd left'})</span>`;
-      } else if (diffDays <= 7) {
-        leavingDateHtml = `<span class="badge" style="background:var(--warning); color:white; font-weight:600;">${s.plannedExitDate} (${diffDays}d left)</span>`;
-      } else {
-        leavingDateHtml = `<span style="font-weight:500;">${s.plannedExitDate}</span>`;
+      if (!isNaN(exitD.getTime())) {
+        const diffTime = exitD - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const short = exitD.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        let chip = "";
+        if (diffDays <= 3) {
+          chip = `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:1px 7px; margin-top:3px; display:inline-block;">${diffDays < 0 ? 'Passed' : diffDays + 'd left'}</span>`;
+        } else if (diffDays <= 7) {
+          chip = `<span class="badge" style="background:var(--warning); color:#fff; font-size:10px; padding:1px 7px; margin-top:3px; display:inline-block;">${diffDays}d left</span>`;
+        }
+        leavingDateHtml = `<div style="line-height:1.5;" title="${s.plannedExitDate}"><div style="font-weight:500; white-space:nowrap;">${short}</div>${chip}</div>`;
       }
     }
 
@@ -203,10 +205,9 @@ const renderTable = () => {
         <td style="vertical-align: top; padding-top: 1.1rem; max-width: 180px; white-space: normal; word-wrap: break-word;">${planHtml}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${s.createdAt?.toDate ? new Date(s.createdAt.toDate()).toLocaleDateString() : 'N/A'}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${s.paymentDueDate || "N/A"}</td>
-        <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${leavingDateHtml}</td>
+        <td style="vertical-align: top; padding-top: 1.1rem; max-width: 130px;">${leavingDateHtml}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; max-width: 180px; white-space: normal; word-wrap: break-word;">${remarksHtml}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${statusBadge}</td>
-        <td style="vertical-align: top; padding-top: 1.1rem;"><button class="icon-btn-sm" onclick="event.stopPropagation(); window.openStudentProfile('${s.id}')">⋯</button></td>
       </tr>
     `;
   });
