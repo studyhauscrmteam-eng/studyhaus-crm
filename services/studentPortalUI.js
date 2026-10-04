@@ -569,6 +569,33 @@ window.toggleStudentReadNotifs = () => {
   try { renderStudentNotifications(); } catch (_) {}
 };
 
+// Student's own documents — SAME backend as the admin view:
+// studentDocuments/{uid} (aadhaarFront, aadhaarBack, selfie, profilePhoto).
+// Admin uploads appear here and student uploads appear in the admin panel:
+// one record, no duplicates, no second source.
+let docsLoadedFor = null;
+
+const loadOwnDocuments = () => {
+  const el = document.getElementById("student-own-documents");
+  if (!el || !currentStudent || currentStudent._isNewUser || currentStudent._isPendingAdmission) return;
+  if (docsLoadedFor === currentStudent.id && el.dataset.loaded) return;
+  docsLoadedFor = currentStudent.id;
+  import("./documentUploadService.js").then(({ renderStudentDocuments }) => {
+    el.dataset.loaded = "1";
+    return renderStudentDocuments(currentStudent.id, "student-own-documents");
+  }).catch(e => {
+    console.warn("[portal] own documents failed:", e);
+    el.innerHTML = `<div style="text-align:center; padding:1.5rem; color:var(--text-muted);">Could not load documents. Try Refresh.</div>`;
+  });
+};
+
+window.refreshOwnDocuments = () => {
+  const el = document.getElementById("student-own-documents");
+  if (el) delete el.dataset.loaded;
+  docsLoadedFor = null;
+  loadOwnDocuments();
+};
+
 const renderPortal = () => {
   if (!currentStudent) return;
   // Listeners attach async — render as soon as the profile lands, using empty
@@ -1320,6 +1347,17 @@ const renderPortal = () => {
         </div>
       </div>
       
+      <div class="card" style="margin-top: 1.25rem;">
+        <div class="card-header">
+          <div>
+            <h3>My Documents</h3>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">Same files the desk sees — upload your Aadhaar here. One shared record, no duplicates.</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="window.refreshOwnDocuments()">Refresh</button>
+        </div>
+        <div id="student-own-documents"><div style="text-align:center; padding:1.5rem; color:var(--text-muted);">Loading documents…</div></div>
+      </div>
+
       <!-- Check-In Seat Map Modal -->
       <dialog id="checkin-seat-modal" class="card" style="border:none; border-radius:12px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.5); background: var(--bg-card); color: var(--text-primary); width:min(860px, calc(100vw - 24px)); max-width:860px; margin:auto;">
         <div style="padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--borderBright); display: flex; justify-content: space-between; align-items: center;">
@@ -1533,7 +1571,7 @@ const renderPortal = () => {
           <form onsubmit="event.preventDefault(); window.handleComplaintSubmit();" class="form-grid">
             <div class="form-group full-width">
               <label>Category</label>
-              <select id="complaint-category" required>
+              <select id="complaint-category" class="sp-input" required>
                 <option value="">Select an issue...</option>
                 <option value="Noise">Noise</option>
                 <option value="Light">Light</option>
@@ -1571,6 +1609,9 @@ const renderPortal = () => {
 
   // Keep the notifications page (bell + sidebar) in sync with live data.
   try { renderStudentNotifications(); } catch (e) { console.warn("[portal] notifications render failed:", e); }
+
+  // Load the student's own documents (same record the admin panel shows).
+  try { loadOwnDocuments(); } catch (e) { console.warn("[portal] own documents failed:", e); }
 
   setTimeout(() => { if (window.calculatePaymentAmount) window.calculatePaymentAmount(); }, 50);
 };

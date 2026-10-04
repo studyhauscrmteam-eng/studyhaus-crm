@@ -49,14 +49,14 @@ export const initStudentManagementUI = async () => {
   }
 
   // Start Listener
-  tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Loading students...</td></tr>`;
+  tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading students...</td></tr>`;
   
   listenToAllStudents((data) => {
     // Exclude Old Students by default unless explicitly filtering for them
     allStudents = data.filter(s => s.status !== "Old Student");
     renderTable();
   }, (err) => {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--danger);">Failed to load students.</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Failed to load students.</td></tr>`;
   });
 
   // Attach event listeners
@@ -142,7 +142,7 @@ const renderTable = () => {
   processed = paginateStudents(processed, currentPage, pageSize);
 
   if (processed.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--text-muted);">No students found.</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-muted);">No students found.</td></tr>`;
     updatePaginationUI(total);
     return;
   }
@@ -168,7 +168,6 @@ const renderTable = () => {
       planHtml = `<div style="line-height: 1.4;">${s.planName}</div>`;
     }
 
-    let remarksHtml = s.remarks && s.remarks !== "-" ? `<div style="line-height: 1.4;">${s.remarks}</div>` : "-";
     let nameHtml = s.name ? `<div class="name" style="line-height: 1.3;">${s.name}</div>` : `<div class="name">Unknown</div>`;
 
 
@@ -206,7 +205,6 @@ const renderTable = () => {
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${s.createdAt?.toDate ? new Date(s.createdAt.toDate()).toLocaleDateString() : 'N/A'}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${s.paymentDueDate || "N/A"}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; max-width: 130px;">${leavingDateHtml}</td>
-        <td style="vertical-align: top; padding-top: 1.1rem; max-width: 180px; white-space: normal; word-wrap: break-word;">${remarksHtml}</td>
         <td style="vertical-align: top; padding-top: 1.1rem; white-space: nowrap;">${statusBadge}</td>
       </tr>
     `;
@@ -366,7 +364,7 @@ const renderProfileModal = (s, role) => {
             </div>
             <div class="form-group">
               <label>Gender</label>
-              <select id="edit-gender" ${!canEdit ? 'disabled' : ''}>
+              <select id="edit-gender" class="sp-input" ${!canEdit ? 'disabled' : ''}>
                 <option value="">Select</option>
                 <option value="Male" ${s.gender === 'Male' ? 'selected' : ''}>Male</option>
                 <option value="Female" ${s.gender === 'Female' ? 'selected' : ''}>Female</option>
@@ -451,13 +449,13 @@ const renderProfileModal = (s, role) => {
 
             <div class="form-group">
               <label>Membership Plan ${isManager ? '(Locked)' : ''}</label>
-              <select id="edit-plan" ${!canEdit || readOnlyForManager ? 'disabled' : ''}>
+              <select id="edit-plan" class="sp-input" ${!canEdit || readOnlyForManager ? 'disabled' : ''}>
                 ${planOptions}
               </select>
             </div>
             <div class="form-group">
               <label>Status ${isManager ? '(Locked)' : ''}</label>
-              <select id="edit-status" ${!canEdit || readOnlyForManager ? 'disabled' : ''}>
+              <select id="edit-status" class="sp-input" ${!canEdit || readOnlyForManager ? 'disabled' : ''}>
                 <option value="Active" ${s.status === 'Active' ? 'selected' : ''}>Active</option>
                 <option value="Inactive" ${s.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
                 <option value="Pending" ${s.status === 'Pending' ? 'selected' : ''}>Pending</option>

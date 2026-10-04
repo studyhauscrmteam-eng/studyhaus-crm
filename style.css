@@ -3204,3 +3204,56 @@ body.light-mode .sp-idcard .sp-idcard-sub { color: #0c4a6e; }
   transform: none;
   cursor: wait;
 }
+
+/* ============ FIX: premium themed selects (custom chevron, no OS-native look) ============ */
+select.sp-input,
+.form-group select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 14px 14px;
+  padding-right: 2.4rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+body.light-mode select.sp-input,
+body.light-mode .form-group select {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+select.sp-input:hover,
+.form-group select:hover {
+  border-color: var(--border-bright);
+}
+select.sp-input:focus,
+.form-group select:focus {
+  border-color: var(--accent-emerald);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+  outline: none;
+}
+select.sp-input:disabled,
+.form-group select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* Native option popup follows the active theme */
+option,
+select.sp-input option,
+.form-group select option {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+/* Compact select for table footers / toolbars */
+.sp-input.sp-select-sm {
+  width: auto;
+  padding: 0.32rem 2rem 0.32rem 0.65rem;
+  background-position: right 0.5rem center;
+  font-size: 12.5px;
+  border-radius: 8px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.sp-input.sp-select-sm:hover {
+  color: var(--text-primary);
+}

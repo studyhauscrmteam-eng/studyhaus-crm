@@ -44,11 +44,14 @@ const renderAnnouncementList = () => {
   const unread = countUnread(unreadIds);
   const readCount = announcements.length - unread;
 
-  // Update badges with the UNREAD count only
+  // Update badges AND the topbar bell dot with the UNREAD count only.
+  // Both start hidden in the template, so zero means zero everywhere.
   document.querySelectorAll('.nav-badge').forEach(badge => {
     badge.textContent = unread > 9 ? "9+" : String(unread);
     badge.style.display = unread > 0 ? 'inline-block' : 'none';
   });
+  const bellDot = document.getElementById("topbar-notif-dot");
+  if (bellDot) bellDot.style.display = unread > 0 ? "" : "none";
 
   if (announcements.length === 0) {
     notifList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted);">No announcements scheduled.</div>`;

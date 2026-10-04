@@ -21,6 +21,61 @@ const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 const BAR_COLORS = ["var(--accent-emerald)", "var(--accent-violet)", "var(--accent-blue)",
   "var(--accent-amber)", "var(--accent-teal)", "var(--danger)"];
 
+// English fallback strings (used only if the translation bundle hasn't
+// loaded yet — window.t falls back to the raw key in that case).
+const EN_FALLBACK = {
+  "analytics.subtitle": "{{label}} performance overview",
+  "analytics.legendRevenue": "Revenue · peak {{amount}}",
+  "analytics.revUp": "↑ {{pct}}% vs {{prev}}",
+  "analytics.revDown": "↓ {{pct}}% vs {{prev}}",
+  "analytics.revSame": "Same as {{prev}}",
+  "analytics.revFirst": "First revenue in {{label}}",
+  "analytics.revNone": "No revenue in {{label}}",
+  "analytics.stuNone": "No new students in {{label}}",
+  "analytics.stuUp": "↑ {{diff}} vs {{prev}}",
+  "analytics.stuDown": "↓ {{diff}} vs {{prev}}",
+  "analytics.stuSame": "Same as {{prev}}",
+  "analytics.seatsOccupied": "{{occupied}} of {{total}} seats occupied",
+  "analytics.noSeats": "No seats configured",
+  "analytics.noActive": "No active students",
+  "analytics.checkedIn": "{{count}} students checked in",
+  "analytics.noCheckins": "No check-ins in this period",
+  "analytics.loadError": "Could not load Firestore data",
+  "analytics.noStudents": "No students yet — plan split appears once students are added.",
+};
+
+/** Translated string with English fallback (translation bundle may lag). */
+const T = (key, args) => {
+  try {
+    if (typeof window !== "undefined" && typeof window.t === "function") {
+      const out = window.t(key, args || {});
+      if (out !== key) return out;
+    }
+  } catch (_) {}
+  let s = EN_FALLBACK[key] || key;
+  const a = args || {};
+  for (const k of Object.keys(a)) s = s.split(`{{${k}}}`).join(String(a[k]));
+  return s;
+};
+
+/** Active UI locale for month names (Gujarati when the app is in Gujarati). */
+const activeLocale = () => {
+  try {
+    const l = String(localStorage.getItem("appLanguage") || "en").toLowerCase();
+    return l.startsWith("gu") ? "gu-IN" : "en-IN";
+  } catch (_) {
+    return "en-IN";
+  }
+};
+
+const monthName = (y, m, style) => {
+  try {
+    return new Intl.DateTimeFormat(activeLocale(), { month: style }).format(new Date(y, m, 1));
+  } catch (_) {
+    return (style === "long" ? MONTHS_LONG : MONTHS_SHORT)[m];
+  }
+};
+
 const pad = n => String(n).padStart(2, "0");
 const dateStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const inr = n => "₹" + Math.round(n).toLocaleString("en-IN");
@@ -49,8 +104,7 @@ function dateKey(v) {
 }
 
 function monthLabel(y, m) {
-  const d = new Date(y, m, 1);
-  return `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
+  return `${monthName(y, m, "long")} ${new Date(y, m, 1).getFullYear()}`;
 }
 
 /** Range bounds + the equivalent preceding period, as local date strings. */
@@ -156,7 +210,7 @@ function computeMetrics(data, b) {
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(b.endMonth.y, b.endMonth.m - i, 1);
-    months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, label: MONTHS_SHORT[d.getMonth()] });
+    months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, label: monthName(d.getFullYear(), d.getMonth(), "short") });
   }
   const monthly = months.map(mo => ({
     ...mo,
@@ -188,20 +242,20 @@ function change(cls, text) {
 function revenueChange(m, b) {
   if (m.prevRevenue > 0) {
     const pct = Math.round(((m.revenue - m.prevRevenue) / m.prevRevenue) * 100);
-    if (pct > 0) return change("positive", `↑ ${pct}% vs ${b.prevLabel}`);
-    if (pct < 0) return change("negative", `↓ ${Math.abs(pct)}% vs ${b.prevLabel}`);
-    return change("neutral", `Same as ${b.prevLabel}`);
+    if (pct > 0) return change("positive", T("analytics.revUp", { pct, prev: b.prevLabel }));
+    if (pct < 0) return change("negative", T("analytics.revDown", { pct: Math.abs(pct), prev: b.prevLabel }));
+    return change("neutral", T("analytics.revSame", { prev: b.prevLabel }));
   }
-  if (m.revenue > 0) return change("positive", `First revenue in ${b.label}`);
-  return change("neutral", `No revenue in ${b.label}`);
+  if (m.revenue > 0) return change("positive", T("analytics.revFirst", { label: b.label }));
+  return change("neutral", T("analytics.revNone", { label: b.label }));
 }
 
 function studentChange(m, b) {
   const diff = m.newStudents - m.prevNewStudents;
-  if (m.prevNewStudents === 0 && m.newStudents === 0) return change("neutral", `No new students in ${b.label}`);
-  if (diff > 0) return change("positive", `↑ ${diff} vs ${b.prevLabel}`);
-  if (diff < 0) return change("negative", `↓ ${Math.abs(diff)} vs ${b.prevLabel}`);
-  return change("neutral", `Same as ${b.prevLabel}`);
+  if (m.prevNewStudents === 0 && m.newStudents === 0) return change("neutral", T("analytics.stuNone", { label: b.label }));
+  if (diff > 0) return change("positive", T("analytics.stuUp", { diff, prev: b.prevLabel }));
+  if (diff < 0) return change("negative", T("analytics.stuDown", { diff: Math.abs(diff), prev: b.prevLabel }));
+  return change("neutral", T("analytics.stuSame", { prev: b.prevLabel }));
 }
 
 function renderBars(chart, monthly) {
@@ -221,7 +275,7 @@ function renderBars(chart, monthly) {
 function renderPlanDist(box, plans) {
   if (!box) return;
   if (!plans.length) {
-    box.innerHTML = `<div style="font-size:13px; color:var(--text-muted); padding:0.5rem 0;">No students yet — plan split appears once students are added.</div>`;
+    box.innerHTML = `<div style="font-size:13px; color:var(--text-muted); padding:0.5rem 0;">${esc(T("analytics.noStudents"))}</div>`;
     return;
   }
   const max = Math.max(...plans.map(p => p.count), 1);
@@ -252,7 +306,7 @@ async function renderAnalytics() {
 
   const b = rangeBounds(rangeKey);
   const subtitle = page.querySelector(".page-subtitle");
-  if (subtitle) subtitle.textContent = `${b.label} performance overview`;
+  if (subtitle) subtitle.textContent = T("analytics.subtitle", { label: b.label });
 
   page.querySelectorAll(".metric-card").forEach(card => {
     const v = card.querySelector(".metric-value");
@@ -263,19 +317,34 @@ async function renderAnalytics() {
     const data = await loadData(false);
     const m = computeMetrics(data, b);
 
-    page.querySelectorAll(".metric-card").forEach(card => {
+    // Cards carry data-metric in the template; DOM order is the fallback,
+    // English label text the last resort (breaks once labels are translated,
+    // so it stays last).
+    const METRIC_ORDER = ["revenue", "students", "occupancy", "attendance"];
+    const guessMetric = (card, i) => {
+      if (card.dataset && card.dataset.metric) return card.dataset.metric;
+      if (METRIC_ORDER[i]) return METRIC_ORDER[i];
       const label = (card.querySelector(".metric-label") || {}).textContent || "";
-      if (/revenue/i.test(label)) setMetric(card, inr(m.revenue), revenueChange(m, b));
-      else if (/new student/i.test(label)) setMetric(card, String(m.newStudents), studentChange(m, b));
-      else if (/occup/i.test(label)) {
+      if (/revenue/i.test(label)) return "revenue";
+      if (/new student/i.test(label)) return "students";
+      if (/occup/i.test(label)) return "occupancy";
+      if (/attendance/i.test(label)) return "attendance";
+      return "";
+    };
+
+    page.querySelectorAll(".metric-card").forEach((card, i) => {
+      const key = guessMetric(card, i);
+      if (key === "revenue") setMetric(card, inr(m.revenue), revenueChange(m, b));
+      else if (key === "students") setMetric(card, String(m.newStudents), studentChange(m, b));
+      else if (key === "occupancy") {
         setMetric(card, `${m.occupancy}%`,
-          m.seatTotal ? change("neutral", `${m.occupied} of ${m.seatTotal} seats occupied`)
-                      : change("neutral", "No seats configured"));
-      } else if (/attendance/i.test(label)) {
+          m.seatTotal ? change("neutral", T("analytics.seatsOccupied", { occupied: m.occupied, total: m.seatTotal }))
+                      : change("neutral", T("analytics.noSeats")));
+      } else if (key === "attendance") {
         setMetric(card, `${m.attendanceRate}%`,
-          !m.activeCount ? change("neutral", "No active students")
-            : m.attendees ? change("neutral", `${m.attendees} students checked in`)
-              : change("neutral", "No check-ins in this period"));
+          !m.activeCount ? change("neutral", T("analytics.noActive"))
+            : m.attendees ? change("neutral", T("analytics.checkedIn", { count: m.attendees }))
+              : change("neutral", T("analytics.noCheckins")));
       }
     });
 
@@ -283,13 +352,13 @@ async function renderAnalytics() {
     const legend = page.querySelector(".chart-legend");
     if (legend) {
       const peak = Math.max(...m.monthly.map(x => x.value), 0);
-      legend.innerHTML = `<span class="legend-box emerald"></span> Revenue · peak ${inr(peak)}`;
+      legend.innerHTML = `<span class="legend-box emerald"></span> ${esc(T("analytics.legendRevenue", { amount: inr(peak) }))}`;
     }
     renderPlanDist(page.querySelector(".plan-dist"), m.plans);
   } catch (err) {
     console.warn("[analytics] render failed:", err);
     page.querySelectorAll(".metric-value").forEach(v => { v.textContent = "—"; });
-    page.querySelectorAll(".metric-change").forEach(c => { c.textContent = "Could not load Firestore data"; c.className = "metric-change neutral"; });
+    page.querySelectorAll(".metric-change").forEach(c => { c.textContent = T("analytics.loadError"); c.className = "metric-change neutral"; });
   } finally {
     rendering = false;
   }
@@ -308,10 +377,21 @@ export const initAnalyticsUI = () => {
 
   page.querySelectorAll(".filter-tabs .filter-tab").forEach(tab => {
     tab.addEventListener("click", () => {
-      const t = tab.textContent.trim().toLowerCase();
-      rangeKey = t.includes("last") ? "last" : t.includes("quarter") ? "quarter" : "month";
+      // data-range survives translation; label text does not.
+      const r = tab.dataset && tab.dataset.range;
+      if (r === "last" || r === "quarter" || r === "month") {
+        rangeKey = r;
+      } else {
+        const t = tab.textContent.trim().toLowerCase();
+        rangeKey = t.includes("last") ? "last" : t.includes("quarter") ? "quarter" : "month";
+      }
       renderAnalytics();
     });
+  });
+
+  // Re-render translated numbers/texts whenever the app language changes.
+  window.addEventListener("languageChanged", () => {
+    try { renderAnalytics(); } catch (_) {}
   });
 
   window.__renderAnalytics = renderAnalytics;   // called by navigate("analytics")
