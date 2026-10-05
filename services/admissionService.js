@@ -94,6 +94,22 @@ export const submitAdmission = async (formData, isStudent) => {
       const uid = formData.uid || null;
       delete formData._selfUid;
 
+      // Seat Preference guard (website/portal only — admin flow below is
+      // untouched): when the chosen plan does not allow seat selection,
+      // any seat sent along is stripped. View-only means view-only, even
+      // if the request was tampered with.
+      try {
+        if ((formData.seatNumber || formData.seatAssigned || formData.seatId) && formData.planId) {
+          const { planAllowsSeatSelection } = await import("./planValidation.js");
+          const allowed = await planAllowsSeatSelection(formData.planId);
+          if (!allowed) {
+            delete formData.seatNumber;
+            delete formData.seatAssigned;
+            delete formData.seatId;
+          }
+        }
+      } catch (_) { /* guard is best-effort here; approval re-checks */ }
+
       // Website / self submission — ALWAYS pending, NEVER directly active.
       formData.approvalStatus = "Pending";
       formData.status = "Pending";

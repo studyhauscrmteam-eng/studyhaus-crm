@@ -1,10 +1,14 @@
-import { listenToAllSeats, assignSeat, unassignSeat, changeSeatStatus, seedInitialSeats, cleanupNonPlanSeats, saveSeatPosition, renameSeat, addSeatAt, deleteSeatById } from "./seatService.js?v=play3";
+import { listenToAllSeats, assignSeat, unassignSeat, changeSeatStatus, seedInitialSeats, reconcileSeatOccupancy, cleanupNonPlanSeats, saveSeatPosition, renameSeat, addSeatAt, deleteSeatById } from "./seatService.js?v=play3";
 import { getDocs, collection, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 
 let allSeats = [];
 let unsubscribe = null;
 let currentFilters = { status: "All", search: "", floor: "Ground Floor" };
+// Students holding seat names that don't exist on the library plan — their
+// seat can never appear on the map. Surfaced under the subtitle (see
+// updateSeatAnalysis) instead of failing silently.
+let seatHealthOrphans = [];
 // Playground: admin "Edit layout" mode — drag/rename/add/delete seats.
 let layoutEditMode = false;
 let dragSeatId = null;
@@ -368,12 +372,30 @@ export const initSeatMapUI = async (mode, containerId, opts = {}) => {
     const clean = await cleanupNonPlanSeats();
     const changed = clean && clean.success ? ((clean.deleted || 0) + (clean.renamed || 0) + (clean.created || 0) + (clean.positioned || 0) + (clean.clearedStudents || 0) + (clean.fixedStudents || 0)) : 0;
     if (changed > 0) {
-      console.info(`[seats] auto-cleanup: ${clean.deleted || 0} old removed, ${clean.created || 0} created, ${clean.renamed || 0} renamed.`);
+      console.info(`[seats] auto-cleanup: ${clean.deleted || 0} removed (${clean.deduped || 0} duplicates), ${clean.created || 0} created, ${clean.renamed || 0} renamed.`);
     }
   } catch (e) { console.warn("Seat cleanup skipped:", e); }
 
-  // Seed seats if empty
+  // Seed seats if empty (now a single fast batch)
   await seedInitialSeats();
+
+  // Self-heal occupancy mismatches (ghost Occupied / unmarked claims) so
+  // the counts can never disagree with the map. Silent unless it fixed
+  // something — then one toast says what changed.
+  try {
+    const fixed = await reconcileSeatOccupancy();
+    seatHealthOrphans = (fixed && fixed.orphans) || [];
+    if (fixed && (fixed.released + fixed.claimed) > 0) {
+      const bits = [];
+      if (fixed.released) bits.push(`${fixed.released} ghost seat${fixed.released > 1 ? "s" : ""} freed`);
+      if (fixed.claimed) bits.push(`${fixed.claimed} seat${fixed.claimed > 1 ? "s" : ""} marked occupied`);
+      console.info(`[seats] reconcile: ${bits.join(", ")}.`);
+      if (typeof window.showToast === "function") {
+        window.showToast(`Seat map corrected: ${bits.join(", ")}.`, "info");
+      }
+    }
+    updateSeatAnalysis(allSeats);
+  } catch (e) { console.warn("Seat reconcile skipped:", e); }
 
   // Initial UI Setup
   container.innerHTML = `
@@ -785,12 +807,37 @@ const triggerAssignSeat = async (seat, studentEmailOrId) => {
 };
 
 const updateSeatAnalysis = (seats) => {
-  const occupied = seats.filter(s => s.status === "Occupied").length;
-  const available = seats.filter(s => s.status === "Available").length;
-  const floorCount = new Set(seats.map(s => s.floor || "Ground Floor")).size;
+  // Scoped to the floor actually on screen — the old global count is what
+  // made "1 occupied" show while the visible map looked all-clean
+  // (the occupied seat was on the other floor, or dimmed by a filter).
+  const floor = (currentFilters && currentFilters.floor) || "Ground Floor";
+  const onFloor = seats.filter(s => (s.floor || "Ground Floor") === floor);
+  const occupied = onFloor.filter(s => s.status === "Occupied").length;
+  const available = onFloor.filter(s => s.status === "Available").length;
+  const occupiedOther = seats.filter(s => s.status === "Occupied" && (s.floor || "Ground Floor") !== floor);
   const subtitle = document.getElementById("seat-subtitle");
   if (subtitle) {
-    subtitle.innerText = `${occupied} occupied · ${available} available across ${floorCount} floor${floorCount === 1 ? "" : "s"}`;
+    let text = `${occupied} occupied · ${available} available on ${floor}`;
+    if (occupiedOther.length > 0) {
+      const names = occupiedOther.slice(0, 3).map(s => s.seatNumber).join(", ");
+      const more = occupiedOther.length > 3 ? ` +${occupiedOther.length - 3} more` : "";
+      text += ` · ${occupiedOther.length} occupied elsewhere (${names}${more}) — switch floor to see`;
+    }
+    // A status/search filter dims non-matching seats to near-invisible —
+    // say so, or the scoped count looks wrong against a "clean" map.
+    const st = currentFilters && currentFilters.status;
+    const q = currentFilters && currentFilters.search;
+    if ((st && st !== "All") || q) {
+      text += ` · filtered view${st && st !== "All" ? `: ${st}` : ""}${q ? ` · “${q}”` : ""} (dimmed seats still counted above)`;
+    }
+    // Orphan claims: an Active student holds a seat name that isn't on the
+    // library plan, so it can never render. Name them instead of silence.
+    if (seatHealthOrphans.length > 0) {
+      const shown = seatHealthOrphans.slice(0, 3).map(o => `${o.studentName} holds “${o.seatNumber}”`).join("; ");
+      const more = seatHealthOrphans.length > 3 ? ` +${seatHealthOrphans.length - 3} more` : "";
+      text += ` · ⚠ not on map: ${shown}${more} (fix the student's seat number)`;
+    }
+    subtitle.innerText = text;
   }
 };
 

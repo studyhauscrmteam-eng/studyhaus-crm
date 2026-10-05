@@ -260,9 +260,11 @@ export const updateStudentProfile = async (studentId, updates) => {
             }
           }
           
-          // 2. Reserve new seat
+          // 2. Reserve new seat (name normalized so "A01" finds "A1" instead
+          // of cloning a duplicate; deterministic ID as final backstop)
           if (updates.seatNumber) {
-            const qNew = query(seatsRef, where("seatNumber", "==", updates.seatNumber));
+            const normedSeat = String(updates.seatNumber).trim().toUpperCase().replace(/\s+/g, "").replace(/^([A-Z]+)-?0*(\d+)$/, (_, p, n) => `${p}${Number(n)}`);
+            const qNew = query(seatsRef, where("seatNumber", "==", normedSeat));
             const newSnap = await getDocs(qNew);
             if (!newSnap.empty) {
               await updateDoc(doc(db, "seats", newSnap.docs[0].id), {
@@ -275,10 +277,10 @@ export const updateStudentProfile = async (studentId, updates) => {
             } else {
               // Create the seat if it doesn't exist
               let floor = "Ground Floor";
-              if (updates.seatNumber.startsWith("B")) floor = "First Floor";
-              
-              await addDoc(seatsRef, {
-                seatNumber: updates.seatNumber,
+              if (normedSeat.startsWith("B")) floor = "First Floor";
+
+              await setDoc(doc(seatsRef, normedSeat), {
+                seatNumber: normedSeat,
                 floor: floor,
                 status: "Reserved",
                 assignedStudentId: studentId,
@@ -287,6 +289,7 @@ export const updateStudentProfile = async (studentId, updates) => {
                 lastUpdated: serverTimestamp()
               });
             }
+            updates.seatNumber = normedSeat;
           }
         }
       }

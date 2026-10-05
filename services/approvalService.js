@@ -65,8 +65,22 @@ export const approveAdmission = async (admissionId) => {
       console.warn("Pre-approval duplicate check skipped:", e?.message || e);
     }
 
-    // Handle seat assignment if seat was selected
+    // Handle seat assignment if seat was selected.
+    // Seat Preference guard: a plan without seat selection keeps the
+    // admission seat-free even if a seat number arrived with the request.
+    // (Staff run with full read rights here, so this check is authoritative.)
     let assignedSeat = data.seatAssigned || data.seatNumber;
+    if (assignedSeat && data.planId) {
+      try {
+        const { planAllowsSeatSelection } = await import("./planValidation.js");
+        const allowed = await planAllowsSeatSelection(data.planId);
+        if (!allowed) {
+          assignedSeat = null;
+          delete data.seatAssigned;
+          delete data.seatNumber;
+        }
+      } catch (_) { /* fail open only when the plan can't be read */ }
+    }
     if (assignedSeat) {
       // Find and update the seat
       const seatQ = query(collection(db, "seats"), where("seatNumber", "==", assignedSeat));

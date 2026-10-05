@@ -400,6 +400,7 @@ export const websiteAdminUI = {
           taglineGu: "રોજના ૬-૮ કલાક",
           seatType: "Fixed",
           featured: false,
+          seatPreference: false,
           badge: "",
           badgeGu: "",
           status: "Active",
@@ -421,6 +422,7 @@ export const websiteAdminUI = {
           taglineGu: "રોજના ૧૭ કલાક (સવારે ૬ થી રાત્રે ૧૧)",
           seatType: "Fixed",
           featured: true,
+          seatPreference: true,
           badge: "Recommended",
           badgeGu: "સૌથી વધુ પસંદગી",
           status: "Active",
@@ -840,6 +842,10 @@ export const websiteAdminUI = {
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                   FEATURED
                 </span>` : ""}
+              ${plan.seatPreference ? `
+                <span style="background:rgba(16,185,129,.14); color:var(--accent-emerald); border:1px solid rgba(16,185,129,.45); font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                  SEAT CHOICE
+                </span>` : ""}
             </div>
             <div style="display:flex; gap:0.4rem;">
               <button class="btn btn-primary btn-sm" onclick="websiteAdminUI.saveSinglePlan('${plan.id}')" style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; font-size:0.78rem;">
@@ -891,8 +897,16 @@ export const websiteAdminUI = {
           <!-- Featured Toggle -->
           <div style="margin-bottom:1rem; padding:10px 14px; background:var(--bg-hover); border-radius:8px; border:1px solid var(--border);">
             <label style="display:flex; align-items:center; gap:0.6rem; font-size:0.85rem; cursor:pointer; margin:0; user-select:none;">
-              <input type="checkbox" id="plan-featured-${plan.id}" ${plan.featured ? "checked" : ""} style="width:16px; height:16px; cursor:pointer;" />
+              <input type="checkbox" id="plan-featured-${plan.id}" ${plan.featured ? "checked" : ""} onchange="websiteAdminUI.togglePlanFlag('${plan.id}', 'featured', this.checked)" style="width:16px; height:16px; cursor:pointer;" />
               <span style="font-weight:600; color:var(--text-primary);">Highlight as Featured / Most Popular Plan on Website</span>
+            </label>
+          </div>
+
+          <!-- Seat Preference Toggle -->
+          <div style="margin-bottom:1rem; padding:10px 14px; background:var(--bg-hover); border-radius:8px; border:1px solid var(--border);">
+            <label style="display:flex; align-items:center; gap:0.6rem; font-size:0.85rem; cursor:pointer; margin:0; user-select:none;">
+              <input type="checkbox" id="plan-seatpref-${plan.id}" ${plan.seatPreference ? "checked" : ""} onchange="websiteAdminUI.togglePlanFlag('${plan.id}', 'seatPreference', this.checked)" style="width:16px; height:16px; cursor:pointer;" />
+              <span style="font-weight:600; color:var(--text-primary);">Seat Preference — students on this plan can pick their seat on the website map</span>
             </label>
           </div>
 
@@ -926,6 +940,7 @@ export const websiteAdminUI = {
         taglineGu: "૧ મહિનો દૈનિક એક્સેસ",
         seatType: "Fixed",
         featured: false,
+        seatPreference: false,
         badge: "",
         badgeEn: "",
         status: "Active",
@@ -1001,8 +1016,35 @@ export const websiteAdminUI = {
     this.renderPlans();
   },
 
-  async saveSinglePlan(planId) {
+  /**
+   * Instant-save for the Featured / Seat Preference toggles — no separate
+   * Save press needed. Writes the single flag, syncs local state and
+   * re-renders so chips update immediately.
+   */
+  async togglePlanFlag(planId, field, value) {
+    if (field !== "featured" && field !== "seatPreference") return;
     const plan = this.plans.find((p) => p.id === planId);
+    try {
+      await updateDoc(doc(db, "membershipPlans", planId), {
+        [field]: !!value,
+        updatedAt: new Date().toISOString()
+      });
+      if (plan) plan[field] = !!value;
+      this.renderPlans();
+      if (typeof window.showToast === "function") {
+        window.showToast(`Plan updated — ${field === "featured" ? "Popular mark" : "Seat Preference"} ${value ? "ON" : "OFF"}.`, "success");
+      }
+    } catch (e) {
+      console.error("Error saving plan flag:", e);
+      if (plan) plan[field] = !value;
+      this.renderPlans();
+      if (typeof window.showToast === "function") {
+        window.showToast("Could not save. Please try again.", "error");
+      }
+    }
+  },
+
+  async saveSinglePlan(planId) {    const plan = this.plans.find((p) => p.id === planId);
     if (!plan) return;
 
     const nameInput = document.getElementById(`plan-name-${planId}`);
@@ -1026,6 +1068,9 @@ export const websiteAdminUI = {
     const featuredInput = document.getElementById(`plan-featured-${planId}`);
     const featured = featuredInput ? featuredInput.checked : (!!plan.featured);
 
+    const seatPrefInput = document.getElementById(`plan-seatpref-${planId}`);
+    const seatPreference = seatPrefInput ? seatPrefInput.checked : (!!plan.seatPreference);
+
     // Allow an empty list — discarding all tags must persist as [].
     // Old code fell back to benefitsEn when benefits was empty, so
     // deleted tags instantly reappeared after re-render / save.
@@ -1044,11 +1089,14 @@ export const websiteAdminUI = {
       badge: badge,
       badgeEn: badge,
       featured: featured,
+      seatPreference: seatPreference,
       benefits: currentBenefits,
       benefitsEn: [...currentBenefits],
       updatedAt: new Date().toISOString()
     };
     // Keep local state in sync so re-renders don't resurrect old tags.
+    plan.featured = featured;
+    plan.seatPreference = seatPreference;
     plan.benefits = [...currentBenefits];
     plan.benefitsEn = [...currentBenefits];
 

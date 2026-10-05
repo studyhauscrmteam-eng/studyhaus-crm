@@ -1,4 +1,4 @@
-import { collection, query, onSnapshot, addDoc, getDocs, doc, updateDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, orderBy } from "firebase/firestore";
+import { collection, query, where, onSnapshot, addDoc, setDoc, getDocs, doc, updateDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, orderBy } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 import { validateSeatAssignment } from "./seatValidation.js";
 
@@ -45,6 +45,9 @@ export const seedInitialSeats = async () => {
 
   if (snap.empty) {
     console.log("Seeding library seat plan: A1-A68 Ground Floor, B1-B40 First Floor...");
+    // Single batched write (was 108 sequential round-trips) — the map
+    // appears in about a second instead of hanging on "0 seats".
+    const batch = writeBatch(db);
     const plan = [
       { prefix: 'A', count: 68, floor: 'Ground Floor' },
       { prefix: 'B', count: 40, floor: 'First Floor' }
@@ -54,7 +57,10 @@ export const seedInitialSeats = async () => {
       for (let i = 1; i <= count; i++) {
         const name = `${prefix}${i}`;
         const pos = PLAN_POSITION.get(name) || {};
-        await addDoc(seatsRef, {
+        // Deterministic doc ID = seat name: re-running seed (two tabs at
+        // once, double-clicks) overwrites the same docs instead of cloning
+        // duplicates. This is THE fix for "two same A1 seats".
+        batch.set(doc(seatsRef, name), {
           seatNumber: name,
           floor,
           col: pos.col ?? null,
@@ -67,6 +73,111 @@ export const seedInitialSeats = async () => {
         });
       }
     }
+    await batch.commit();
+  }
+};
+
+/**
+ * Self-healing occupancy reconcile. Runs on every admin Seats page open.
+ * Fixes the two mismatches that make counts lie against the map:
+ *  1. GHOST occupied — seat says Occupied but no Active student claims it
+ *     (stale after deletes/edits) → released to Available.
+ *  2. UNMARKED claim — an Active student holds a seatNumber whose doc(s)
+ *     still say Available (after rebuilds/direct edits) → marked Occupied
+ *     with the student's name. Missing plan-valid docs are recreated.
+ *  3. ORPHAN claim — an Active student holds a seat name that is not on the
+ *     library plan at all → reported (returned) so the page can show WHY
+ *     that student's seat can't appear on the map. Never auto-deleted here.
+ * Never touches Reserved / Maintenance / Inactive seats, never edits student
+ * docs. Best-effort: failures only log.
+ * @returns {Promise<{released: number, claimed: number, orphans: Array}>}
+ */
+export const reconcileSeatOccupancy = async () => {
+  const empty = { released: 0, claimed: 0, orphans: [] };
+  try {
+    const [seatsSnap, studentsSnap] = await Promise.all([
+      getDocs(collection(db, "seats")),
+      getDocs(query(collection(db, "students"), where("status", "==", "Active")))
+    ]);
+    if (seatsSnap.empty) return empty;
+
+    // Active claims by normalized seat name.
+    const claims = new Map(); // normName -> { id, name }
+    studentsSnap.forEach(stu => {
+      const data = stu.data() || {};
+      const raw = data.seatNumber;
+      if (!raw) return;
+      const n = normalizePlanName(raw);
+      if (!claims.has(n)) {
+        claims.set(n, { id: stu.id, name: data.name || "Student", planValid: PLAN_SEAT_NAMES.has(n) });
+      }
+    });
+
+    // Which normalized names already have a doc.
+    const present = new Set();
+    seatsSnap.forEach(d => {
+      const n = normalizePlanName((d.data() || {}).seatNumber);
+      if (PLAN_SEAT_NAMES.has(n)) present.add(n);
+    });
+
+    const batch = writeBatch(db);
+    let released = 0, claimed = 0, created = 0;
+    const orphans = [];
+    seatsSnap.forEach(d => {
+      const data = d.data() || {};
+      const n = normalizePlanName(data.seatNumber);
+      if (!PLAN_SEAT_NAMES.has(n)) return; // non-plan docs: cleanup owns these
+      const claim = claims.get(n);
+      if (data.status === "Occupied" && !claim) {
+        batch.update(d.ref, {
+          status: "Available",
+          assignedStudentId: null,
+          assignedStudentName: null,
+          planType: null,
+          lastUpdated: serverTimestamp()
+        });
+        released++;
+      } else if (data.status === "Available" && claim) {
+        batch.update(d.ref, {
+          status: "Occupied",
+          assignedStudentId: claim.id,
+          assignedStudentName: claim.name,
+          lastUpdated: serverTimestamp()
+        });
+        claimed++;
+      }
+    });
+
+    // Recreate missing docs for plan-valid claims (plan doc gone entirely).
+    const seatsRef = collection(db, "seats");
+    claims.forEach((claim, n) => {
+      if (!claim.planValid) {
+        orphans.push({ studentName: claim.name, seatNumber: n });
+        return;
+      }
+      if (!present.has(n)) {
+        const want = PLAN_POSITION.get(n) || {};
+        batch.set(doc(seatsRef, n), {
+          seatNumber: n,
+          floor: want.floor || (String(n).startsWith("B") ? "First Floor" : "Ground Floor"),
+          col: want.col ?? null,
+          row: want.row ?? null,
+          status: "Occupied",
+          assignedStudentId: claim.id,
+          assignedStudentName: claim.name,
+          planType: null,
+          lastUpdated: serverTimestamp()
+        });
+        created++;
+      }
+    });
+
+    if (released + claimed + created > 0) await batch.commit();
+    if (created) claimed += created;
+    return { released, claimed, orphans };
+  } catch (e) {
+    console.warn("[seats] reconcile skipped:", e?.message || e);
+    return empty;
   }
 };
 
@@ -103,7 +214,7 @@ export const rebuildSeatPlan = async () => {
     for (let i = 1; i <= target.count; i++) {
       const name = `${target.prefix}${i}`;
       const pos = PLAN_POSITION.get(name) || {};
-      await addDoc(seatsRef, {
+      await setDoc(doc(seatsRef, name), {
         seatNumber: name,
         floor: target.floor,
         col: pos.col ?? null,
@@ -158,8 +269,45 @@ export const cleanupNonPlanSeats = async () => {
     snap.forEach(d => { const n = d.data() && d.data().seatNumber; if (n) exactNames.add(n); });
 
     const toDeleteRefs = [];
+    const deletedIds = new Set();
     const renames = [];
+
+    // 0. DEDUPE identical normalized names ("two A1s") FIRST — the old code
+    // never caught these. Keep the richest record (Occupied > Reserved >
+    // Available, then one with an assignee, then one with a position),
+    // adopt an assignee onto the keeper when it lacks one, delete the rest.
+    // Students reference seats by NAME, so deleting dupe docs breaks nothing.
+    const statusRank = (s) => s === "Occupied" ? 3 : s === "Reserved" ? 2 : s === "Available" ? 1 : 0;
+    const byName = new Map();
     snap.forEach(d => {
+      const name = d.data() && d.data().seatNumber;
+      if (!name) return;
+      const n = normalizePlanName(name);
+      if (!PLAN_SEAT_NAMES.has(n)) return;
+      if (!byName.has(n)) byName.set(n, []);
+      byName.get(n).push(d);
+    });
+    const dedupeMerges = [];
+    let deduped = 0;
+    byName.forEach((docs) => {
+      if (docs.length < 2) return;
+      const sorted = [...docs].sort((a, b) => {
+        const da = a.data() || {}, db = b.data() || {};
+        return (statusRank(db.status) - statusRank(da.status))
+          || ((db.assignedStudentId ? 1 : 0) - (da.assignedStudentId ? 1 : 0))
+          || (((db.col != null) ? 1 : 0) - ((da.col != null) ? 1 : 0));
+      });
+      const keeper = sorted[0];
+      const kd = keeper.data() || {};
+      if (!kd.assignedStudentId) {
+        const donor = sorted.find(d => (d.data() || {}).assignedStudentId);
+        if (donor) dedupeMerges.push({ keeperRef: keeper.ref, donor: donor.data() });
+      }
+      sorted.slice(1).forEach(d => { toDeleteRefs.push(d.ref); deletedIds.add(d.id); deduped++; });
+    });
+
+    snap.forEach(d => {
+      if (deletedIds.has(d.id)) return; // already condemned as a dupe
       const name = d.data() && d.data().seatNumber;
       if (!name) { toDeleteRefs.push(d.ref); return; }
       const n = normalizePlanName(name);
@@ -171,6 +319,16 @@ export const cleanupNonPlanSeats = async () => {
     });
 
     await Promise.all(toDeleteRefs.map(r => deleteDoc(r)));
+    await Promise.all(dedupeMerges.map(m => {
+      const upd = {
+        assignedStudentId: m.donor.assignedStudentId || null,
+        assignedStudentName: m.donor.assignedStudentName || null,
+        planType: m.donor.planType || null,
+        lastUpdated: serverTimestamp()
+      };
+      if (m.donor.status === "Occupied") upd.status = "Occupied";
+      return updateDoc(m.keeperRef, upd);
+    }));
     await Promise.all(renames.map(r => updateDoc(r.ref, { seatNumber: r.to, lastUpdated: serverTimestamp() })));
 
     // Re-read survivors, then create missing plan seats + fix positions.
@@ -193,7 +351,9 @@ export const cleanupNonPlanSeats = async () => {
     const missing = [...PLAN_SEAT_NAMES].filter(n => !present.has(n));
     await Promise.all(missing.map(async (n) => {
       const want = PLAN_POSITION.get(n) || {};
-      await addDoc(seatsRef, {
+      // Deterministic ID: concurrent runs converge on the same doc instead
+      // of cloning a second copy.
+      await setDoc(doc(seatsRef, n), {
         seatNumber: n,
         floor: want.floor || (String(n).startsWith("B") ? "First Floor" : "Ground Floor"),
         col: want.col ?? null,
@@ -222,7 +382,7 @@ export const cleanupNonPlanSeats = async () => {
     });
     await batch.commit();
 
-    return { success: true, deleted: toDeleteRefs.length, renamed: renames.length, created, positioned: posFixes.length, clearedStudents, fixedStudents };
+    return { success: true, deleted: toDeleteRefs.length, deduped, renamed: renames.length, created, positioned: posFixes.length, clearedStudents, fixedStudents };
   } catch (e) {
     console.warn("cleanupNonPlanSeats skipped:", e);
     return { success: false, error: e.message };

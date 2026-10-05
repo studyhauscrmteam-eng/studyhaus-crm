@@ -9,6 +9,7 @@ const DEFAULT_PLANS = [
     price: 1000,
     duration: "1 Month",
     seatType: "Fixed",
+    seatPreference: true,
     isManual: false,
     status: "Active",
     createdAt: new Date().toISOString()
@@ -19,6 +20,7 @@ const DEFAULT_PLANS = [
     duration: "1 Month",
     seatType: "Rotational",
     capacity: 30,
+    seatPreference: false,
     isManual: false,
     status: "Active",
     createdAt: new Date().toISOString()
@@ -29,6 +31,7 @@ const DEFAULT_PLANS = [
     duration: "1 Month",
     allowedStartTime: "19:00",
     allowedEndTime: "07:00",
+    seatPreference: false,
     isManual: false,
     status: "Active",
     createdAt: new Date().toISOString()
@@ -67,6 +70,12 @@ export const initMembershipPlans = async () => {
             <div class="form-group" style="margin-bottom: 1.5rem;">
               <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem; font-weight:600; color:var(--text-secondary);">Notes (Optional)</label>
               <textarea id="add-plan-notes" rows="2" placeholder="Any additional notes..." class="input-field" style="width: 100%; box-sizing: border-box; padding: 0.5rem;"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+              <label style="display:flex; align-items:center; gap:0.6rem; font-size:0.875rem; font-weight:600; color:var(--text-secondary); cursor:pointer; margin:0;">
+                <input type="checkbox" id="add-plan-seatpref" style="width:16px; height:16px; cursor:pointer;" />
+                Seat Preference — students on this plan can pick their seat on the website map
+              </label>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
               <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-plan-modal').close()">Cancel</button>
@@ -144,6 +153,7 @@ const listenToPlans = () => {
       let featuresHtml = `<div class="plan-feature">✓ ${plan.duration || 'N/A'}</div>`;
       if (plan.seatType) featuresHtml += `<div class="plan-feature">✓ ${plan.seatType} seat</div>`;
       if (plan.capacity) featuresHtml += `<div class="plan-feature">✓ Max Capacity: ${plan.capacity}</div>`;
+      if (plan.seatPreference === true) featuresHtml += `<div class="plan-feature">✓ Seat selection allowed</div>`;
       if (plan.allowedStartTime) featuresHtml += `<div class="plan-feature">✓ Timings: ${plan.allowedStartTime} to ${plan.allowedEndTime}</div>`;
       if (plan.notes) featuresHtml += `<div class="plan-feature muted">${plan.notes}</div>`;
 
@@ -158,10 +168,12 @@ const listenToPlans = () => {
         `;
       }
 
-      // Check if it's the "Most Popular"
-      const isPopular = plan.planName === "Rotational Seat";
+      // "Most Popular" comes from the plan itself (Featured toggle / badge in
+      // Website-manager), with the legacy Rotational Seat fallback — so the
+      // Membership card always matches what the website shows.
+      const isPopular = plan.featured === true || plan.planName === "Rotational Seat";
       const cardClass = isPopular ? "plan-card featured" : "plan-card";
-      const badgeHtml = isPopular ? `<div class="plan-badge">Popular</div>` : "";
+      const badgeHtml = isPopular ? `<div class="plan-badge">${plan.badge || "Popular"}</div>` : "";
 
       html += `
         <div class="${cardClass}">
@@ -193,6 +205,7 @@ const handleCreateManualPlan = async () => {
   document.getElementById("add-plan-price").value = "";
   document.getElementById("add-plan-duration").value = "";
   document.getElementById("add-plan-notes").value = "";
+  document.getElementById("add-plan-seatpref").checked = false;
   document.getElementById("add-plan-modal").showModal();
 };
 
@@ -201,6 +214,7 @@ window.submitPlanForm = async () => {
   const price = document.getElementById("add-plan-price").value;
   const duration = document.getElementById("add-plan-duration").value.trim();
   const notes = document.getElementById("add-plan-notes").value.trim();
+  const seatPreference = document.getElementById("add-plan-seatpref")?.checked === true;
 
   if (!name || !price || !duration) {
     window.showToast(window.t ? window.t('Please fill in all required fields.') || "Please fill in all required fields." : "Please fill in all required fields.", "warning");
@@ -217,6 +231,7 @@ window.submitPlanForm = async () => {
     price: Number(price),
     duration: duration,
     notes: notes || "",
+    seatPreference: seatPreference,
     isManual: false,
     status: "Active",
     createdAt: new Date().toISOString()

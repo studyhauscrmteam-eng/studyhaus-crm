@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 
 /**
@@ -32,6 +32,29 @@ export const validatePlan = async (planData) => {
   }
 
   return true;
+};
+
+/**
+ * Fetch one membership plan by ID (null when missing/unreadable).
+ */
+export const getPlanById = async (planId) => {
+  if (!planId) return null;
+  try {
+    const snap = await getDoc(doc(db, "membershipPlans", planId));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+/**
+ * Whether a plan lets the student PICK their seat on the map.
+ * Missing flag (older plans) means view-only → false.
+ * Accepts a plan object OR a plan ID.
+ */
+export const planAllowsSeatSelection = async (planOrId) => {
+  const plan = typeof planOrId === "string" ? await getPlanById(planOrId) : (planOrId || null);
+  return !!(plan && plan.seatPreference === true);
 };
 
 /**
