@@ -27,7 +27,7 @@ export const listenToStudentPortalData = (onDataUpdate, onError) => {
               const docsSnap = await getDoc(doc(db, "studentDocuments", studentDoc.id));
               if (docsSnap.exists()) {
                 const dd = docsSnap.data();
-                const photo = dd.profilePhoto || dd.selfie || null;
+                const photo = dd.photo || dd.profilePhoto || dd.selfie || null;
                 if (photo) { base.profilePhotoUrl = photo; base.photoUrl = photo; }
               }
             } catch (_) { /* photo fallback is best-effort */ }

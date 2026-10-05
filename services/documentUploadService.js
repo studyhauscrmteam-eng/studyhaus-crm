@@ -83,13 +83,22 @@ const compressImage = (file) => {
 /**
  * Save compressed document images into Firestore.
  * Stored in: studentDocuments/{studentId}
- * @param {Object} files - { aadhaarFront: File|null, aadhaarBack: File|null, selfie: File|null }
+ * Legacy callers may still pass `selfie` / `profilePhoto` keys — they are
+ * merged into the single canonical `photo` field so only one photo exists.
+ * @param {Object} files - { aadhaarFront: File|null, aadhaarBack: File|null, photo: File|null }
  * @param {string} studentId
  * @param {function} onProgress - called with 0-100
- * @returns {Promise<Object>} field names added { aadhaarFrontUrl, aadhaarBackUrl, selfieUrl }
+ * @returns {Promise<Object>} field names added { aadhaarFrontUrl, aadhaarBackUrl, photoUrl }
  */
 export const uploadAdmissionDocuments = async (files, studentId, onProgress = () => { }) => {
-  const entries = Object.entries(files).filter(([, f]) => f !== null);
+  // Normalise legacy keys -> single photo (last one wins, never duplicated).
+  const normalised = { ...files };
+  if (normalised.selfie && !normalised.photo) normalised.photo = normalised.selfie;
+  if (normalised.profilePhoto && !normalised.photo) normalised.photo = normalised.profilePhoto;
+  delete normalised.selfie;
+  delete normalised.profilePhoto;
+
+  const entries = Object.entries(normalised).filter(([, f]) => f !== null);
   if (entries.length === 0) return {};
 
   const docData = { studentId, updatedAt: new Date().toISOString() };
@@ -216,13 +225,33 @@ export const loadStudentDocuments = async (studentId) => {
 
 /**
  * Fields stored per student in `studentDocuments/{studentId}`.
+ * There is exactly ONE photo field: `photo`. Legacy `selfie` and
+ * `profilePhoto` copies from older builds are still READ as a fallback
+ * (see getStudentPhoto) but never written any more.
  */
 export const STUDENT_DOC_FIELDS = [
   { key: "aadhaarFront", label: "Aadhaar Front", accept: "image/*,.pdf", hint: "Front of ID proof" },
   { key: "aadhaarBack", label: "Aadhaar Back", accept: "image/*,.pdf", hint: "Back of ID proof" },
-  { key: "selfie", label: "Selfie Photo", accept: "image/*", hint: "Live / uploaded selfie" },
-  { key: "profilePhoto", label: "Profile Photo", accept: "image/*", hint: "Profile picture" },
+  { key: "photo", label: "Photo", accept: "image/*", hint: "Upload or take a live selfie — one photo only" },
 ];
+
+/**
+ * Single source of truth for a student's photo.
+ * @param {Object|null} docs - studentDocuments/{id} data
+ * @param {Object|null} student - students/{id} data (denormalised URLs)
+ * @returns {string|null} base64 data URL or null
+ */
+export const getStudentPhoto = (docs, student) => {
+  if (docs) {
+    if (docs.photo) return docs.photo;
+    if (docs.profilePhoto) return docs.profilePhoto; // legacy
+    if (docs.selfie) return docs.selfie;               // legacy
+  }
+  if (student) {
+    return student.profilePhotoUrl || student.photoUrl || student.photo || student.selfieUrl || null;
+  }
+  return null;
+};
 
 const notify = (msg, type = "info") => {
   if (typeof window !== "undefined" && typeof window.showToast === "function") window.showToast(msg, type);
@@ -243,6 +272,11 @@ export const uploadStudentDocument = async (studentId, key, file) => {
     { studentId, [key]: base64, updatedAt: new Date().toISOString() },
     { merge: true }
   );
+  // The single photo must ALSO reach the student record, otherwise the main
+  // student list (which reads the denormalised thumb) never shows it.
+  if (key === "photo" || key === "profilePhoto" || key === "selfie") {
+    await denormalisePhoto(studentId, file, base64).catch(() => {});
+  }
   return true;
 };
 
@@ -250,7 +284,89 @@ export const uploadStudentDocument = async (studentId, key, file) => {
 export const removeStudentDocument = async (studentId, key) => {
   const { deleteField } = await import("firebase/firestore");
   await setDoc(doc(db, "studentDocuments", studentId), { [key]: deleteField() }, { merge: true });
+  // Clearing the single photo also clears the list avatar.
+  if (key === "photo" || key === "profilePhoto" || key === "selfie") {
+    try {
+      const { updateDoc } = await import("firebase/firestore");
+      const wipe = { profilePhotoUrl: deleteField(), photoUrl: deleteField(), updatedAt: new Date().toISOString() };
+      await updateDoc(doc(db, "students", studentId), wipe).catch(() => {});
+    } catch (_) {}
+  }
   return true;
+};
+
+/**
+ * Tiny avatar copy (~192px, a few dozen KB) written to the student record so
+ * the main list, seat map and profile update over the live listener in
+ * ~1 second instead of waiting on a ~1MB full-photo write. The full photo
+ * always stays in studentDocuments/{id}.photo for viewing/downloading.
+ */
+const compressThumbnail = (file) => {
+  return new Promise((resolve, reject) => {
+    if (!String(file.type || "").startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 192;
+      let { width, height } = img;
+      if (width > height) { height = Math.round((height / width) * MAX); width = MAX; }
+      else { width = Math.round((width / height) * MAX); height = MAX; }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.65));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+};
+
+/**
+ * Backfill the list thumbnail from an already-stored full photo.
+ * Heals uploads made before the thumbnail system existed: opening the
+ * student profile once is enough, no re-upload needed.
+ */
+export const backfillPhotoThumb = async (studentId, base64) => {
+  if (!studentId || !base64 || !String(base64).startsWith("data:")) return false;
+  try {
+    const blob = await (await fetch(base64)).blob();
+    const file = new File([blob], "photo.jpg", { type: blob.type || "image/jpeg" });
+    await denormalisePhoto(studentId, file, base64);
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
+/** Write the fast thumbnail onto students/{id} (+ users fallback). */
+const denormalisePhoto = async (studentId, file, fullBase64) => {
+  let thumb = fullBase64;
+  try {
+    thumb = await compressThumbnail(file);
+  } catch (_) { /* fall back to full image */ }
+  const stamp = new Date().toISOString();
+  try {
+    const { updateDoc } = await import("firebase/firestore");
+    await updateDoc(doc(db, "students", studentId), {
+      profilePhotoUrl: thumb,
+      photoUrl: thumb,
+      updatedAt: stamp,
+    });
+  } catch (e) {
+    try {
+      const { updateDoc: _upd } = await import("firebase/firestore");
+      await _upd(doc(db, "users", studentId), { profilePhotoUrl: thumb, photoUrl: thumb, updatedAt: stamp });
+    } catch (_) {}
+  }
+  return thumb;
 };
 
 // Remember the last rendered list so uploads can refresh it
@@ -345,6 +461,16 @@ if (typeof window !== "undefined") {
       notify("Document uploaded successfully!", "success");
       if (input) input.value = "";
       await renderStudentDocuments(studentId, containerId || lastDocRender.containerId);
+      // Instant reflection: paint the new photo on the open profile card
+      // right away (the main list follows via the live listener).
+      if (key === "photo" || key === "profilePhoto" || key === "selfie") {
+        const avatarEl = document.getElementById(`sp-avatar-${studentId}`);
+        if (avatarEl && file.type.startsWith("image/")) {
+          const localUrl = URL.createObjectURL(file);
+          avatarEl.innerHTML = `<img src="${localUrl}" style="width:100%; height:100%; object-fit:cover;" alt="Photo" />`;
+          avatarEl.style.background = "var(--bg-hover)";
+        }
+      }
     } catch (e) {
       console.error("Student document upload failed:", e);
       notify("Upload failed: " + ((e && e.message) || "unknown error"), "error");
@@ -432,8 +558,10 @@ const DOC_TYPES = [
     iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="20" height="14" x="2" y="5" rx="2"/><circle cx="8" cy="12" r="2"/><line x1="14" x2="18" y1="11" y2="11"/><line x1="14" x2="18" y1="14" y2="14"/></svg>`
   },
   {
-    key: "selfie",
-    label: "Selfie Photo",
+    // ONE photo only — upload a file OR take a live selfie, both land in
+    // the same `photo` field.
+    key: "photo",
+    label: "Photo",
     accept: "image/*",
     iconSvg: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`
   },
@@ -457,14 +585,17 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
     </label>
     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem;">
       ${DOC_TYPES.map(d => {
-    if (d.key === "selfie") {
+    if (d.key === "photo") {
+      // Single photo card: click uploads a file, dedicated button takes a
+      // live selfie — both write the SAME `photo` field. No duplicates.
       return `
             <div id="doc-card-${d.key}" style="
               border:2px dashed var(--border-bright);border-radius:12px;padding:1rem .75rem;
-              text-align:center;cursor:pointer;transition:border-color .2s,background .2s;
+              text-align:center;transition:border-color .2s,background .2s;
               position:relative;background:rgba(255,255,255,.02);"
-              onclick="window.__openSelfieCamera()">
-              
+              onclick="document.getElementById('doc-input-${d.key}').click()">
+              <input type="file" id="doc-input-${d.key}" accept="${d.accept}"
+                style="display:none;" data-key="${d.key}" />
               <div id="doc-preview-${d.key}" style="display:none;margin-bottom:.5rem;position:relative;">
                 <img id="doc-img-${d.key}" style="width:100%;height:76px;object-fit:cover;
                   border-radius:8px;" src="" alt="preview" />
@@ -477,10 +608,13 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
               <div id="doc-placeholder-${d.key}">
                 <div style="display:flex;justify-content:center;margin-bottom:.4rem;color:var(--primary);">${d.iconSvg}</div>
                 <div style="font-size:12px;font-weight:600;color:var(--text-primary);">${d.label}</div>
-                <div id="doc-sublabel-${d.key}" style="font-size:11px;color:var(--text-muted);margin-top:2px;">Take Live Selfie</div>
+                <div id="doc-sublabel-${d.key}" style="font-size:11px;color:var(--text-muted);margin-top:2px;">Upload or take selfie</div>
               </div>
               <div id="doc-name-${d.key}" style="font-size:11px;color:var(--accent-emerald);
-                margin-top:.3rem;display:none;word-break:break-all;">Selfie captured<br><span style="color:var(--text-muted);font-size:10px;text-decoration:underline;">Click to retake</span></div>
+                margin-top:.3rem;display:none;word-break:break-all;"></div>
+              <button type="button" onclick="event.stopPropagation();window.__openSelfieCamera()"
+                style="margin-top:.5rem;width:100%;padding:7px;border-radius:8px;border:1px solid var(--border);
+                background:var(--bg-hover);color:var(--text-primary);font-size:12px;font-weight:600;cursor:pointer;">Take Selfie</button>
             </div>
           `;
     } else {
@@ -548,13 +682,15 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
     document.body.appendChild(modalDiv.firstElementChild);
   }
 
-  // Wire each file input (for non-selfie docs)
+  // Wire each file input (photo card has BOTH upload input and selfie button)
   DOC_TYPES.forEach(({ key }) => {
-    if (key === "selfie") return;
     const input = document.getElementById(`doc-input-${key}`);
+    if (!input) return;
     input.addEventListener("change", () => {
       const file = input.files[0];
       if (!file) return;
+      // A manually picked file replaces any earlier live selfie — one photo.
+      if (key === "photo") capturedSelfieFile = null;
       const img = document.getElementById(`doc-img-${key}`);
       const preview = document.getElementById(`doc-preview-${key}`);
       const placeholder = document.getElementById(`doc-placeholder-${key}`);
@@ -617,23 +753,28 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Convert to file
+    // Convert to file (single canonical photo)
     canvas.toBlob((blob) => {
-      const file = new File([blob], "selfie.jpg", { type: "image/jpeg" });
+      const file = new File([blob], "photo.jpg", { type: "image/jpeg" });
       capturedSelfieFile = file;
 
       // Update UI
-      const key = "selfie";
+      const key = "photo";
       const img = document.getElementById(`doc-img-${key}`);
       const preview = document.getElementById(`doc-preview-${key}`);
       const placeholder = document.getElementById(`doc-placeholder-${key}`);
       const nameEl = document.getElementById(`doc-name-${key}`);
       const card = document.getElementById(`doc-card-${key}`);
 
+      if (!img || !preview || !placeholder || !nameEl || !card) {
+        window.__closeSelfieCamera();
+        return;
+      }
       img.src = URL.createObjectURL(file);
       preview.style.display = "block";
       placeholder.style.display = "none";
-      nameEl.style.display = "block"; // Contains "Selfie captured" + "Retake Selfie"
+      nameEl.textContent = "Selfie captured — click card to replace";
+      nameEl.style.display = "block";
       card.style.borderColor = "var(--accent-emerald)";
       card.style.background = "rgba(16,185,129,.06)";
 
@@ -643,8 +784,10 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
 
   // Clear handler (global so inline onclick works)
   window.__clearDocUpload = (key) => {
-    if (key === "selfie") {
+    if (key === "photo") {
       capturedSelfieFile = null;
+      const inp = document.getElementById(`doc-input-${key}`);
+      if (inp) inp.value = "";
     } else {
       document.getElementById(`doc-input-${key}`).value = "";
     }
@@ -659,17 +802,23 @@ export const initDocumentUploads = (containerId = "doc-upload-section") => {
 
 /**
  * Collect the selected File objects from the upload UI.
- * @returns {{ aadhaarFront: File|null, aadhaarBack: File|null, selfie: File|null }}
+ * Single photo: file-input choice and live-selfie capture are merged —
+ * the selfie wins if both are present, so only ONE photo is ever stored.
+ * (`selfie` alias kept so older callers keep working.)
+ * @returns {{ aadhaarFront: File|null, aadhaarBack: File|null, photo: File|null, selfie: File|null }}
  */
 export const getSelectedDocumentFiles = () => {
   const getFile = (id) => {
     const el = document.getElementById(id);
     return el && el.files && el.files[0] ? el.files[0] : null;
   };
+  const uploaded = getFile("doc-input-photo");
+  const photo = capturedSelfieFile || uploaded || null;
   return {
     aadhaarFront: getFile("doc-input-aadhaarFront"),
     aadhaarBack: getFile("doc-input-aadhaarBack"),
-    selfie: capturedSelfieFile,
+    photo,
+    selfie: photo, // legacy alias
   };
 };
 
@@ -690,12 +839,14 @@ export const setUploadProgress = (pct) => {
 // ──────────────────────────────────────────────
 // Profile photo (student portal)
 // Stored as compressed base64 so it works on the Spark plan (no Storage).
-// Saved to BOTH studentDocuments/{uid}.profilePhoto and
-// students/{uid}.profilePhotoUrl so every avatar picks it up.
+// Saved to studentDocuments/{uid}.photo (canonical, single photo) and
+// denormalised to students/{uid}.profilePhotoUrl / photoUrl so every
+// avatar picks it up. Legacy `profilePhoto` / `selfie` fields are left
+// untouched for old records (read-only fallback, never written).
 // ──────────────────────────────────────────────
 
 /**
- * Upload / replace the student's profile photo.
+ * Upload / replace the student's photo (single photo).
  * @param {File} file - image file (JPG/PNG, ideally < 2MB before compression)
  * @param {string} studentId - students/{uid}
  * @returns {Promise<{success: boolean, url?: string, error?: string}>}
@@ -714,28 +865,13 @@ export const uploadProfilePhoto = async (file, studentId) => {
     // 1. Canonical copy in studentDocuments (viewable by staff + self per rules)
     await setDoc(
       doc(db, "studentDocuments", studentId),
-      { studentId, profilePhoto: base64, updatedAt: stamp },
+      { studentId, photo: base64, updatedAt: stamp },
       { merge: true }
     );
 
-    // 2. Denormalised copy on the student doc for instant avatar rendering
-    try {
-      const { updateDoc } = await import("firebase/firestore");
-      await updateDoc(doc(db, "students", studentId), {
-        profilePhotoUrl: base64,
-        photoUrl: base64,
-        updatedAt: stamp,
-      });
-    } catch (e) {
-      // students/{uid} may not exist for pure users-collection accounts —
-      // still try users/{uid} so the photo isn't lost.
-      try {
-        const { updateDoc: _upd } = await import("firebase/firestore");
-        await _upd(doc(db, "users", studentId), { profilePhotoUrl: base64, photoUrl: base64, updatedAt: stamp });
-      } catch (_) {
-        console.warn("[profile-photo] student doc update skipped:", (e && e.message) || e);
-      }
-    }
+    // 2. Fast thumbnail on the student doc for instant list/avatar rendering
+    // (full photo stays in studentDocuments for viewing/downloading).
+    await denormalisePhoto(studentId, file, base64).catch(() => {});
 
     return { success: true, url: base64 };
   } catch (e) {

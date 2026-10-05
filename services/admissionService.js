@@ -3,6 +3,7 @@ import { db } from "../firebase/firebase.js";
 import { validateStudentData } from "./studentValidation.js";
 import { approveAdmission, rejectAdmission } from "./approvalService.js?v=login3";
 import { createPortalAccount } from "./authService.js?v=login5";
+import { ensureStudentId } from "./studentIdService.js";
 import { getAuth } from "firebase/auth";
 
 /**
@@ -23,7 +24,9 @@ export const fetchPlansForDropdown = async (isStudent) => {
 };
 
 /**
- * Update payment details for an existing pending admission
+ * Update payment details for an existing pending admission.
+ * NOTE: paying does NOT auto-approve. The request stays in the
+ * "Pending approval" queue until an admin explicitly approves it.
  */
 export const updateAdmissionPayment = async (admissionId, transactionId, paymentScreenshotUrl) => {
   try {
@@ -37,12 +40,6 @@ export const updateAdmissionPayment = async (admissionId, transactionId, payment
       updates.paymentScreenshotUrl = paymentScreenshotUrl;
     }
     await updateDoc(admissionRef, updates);
-    
-    // Auto-approve the student since they have now paid
-    const res = await approveAdmission(admissionId);
-    if (!res.success) {
-       console.error("Auto-approval failed: ", res.error);
-    }
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -50,39 +47,81 @@ export const updateAdmissionPayment = async (admissionId, transactionId, payment
 };
 
 /**
- * Submit an admission form
- * If user is Student -> goes to 'admissions' collection (Pending)
- * If user is Admin -> goes to 'students' collection (Active immediately)
+ * Submit an admission form.
+ *
+ * WEBSITE / STUDENT submissions (isStudent = true) ALWAYS go to the
+ * 'admissions' collection with status "Pending" — they NEVER enter the
+ * main 'students' list directly. An admin must Approve (or Reject) them
+ * from Admissions → Pending approval. Paying only attaches payment info.
+ *
+ * ADMIN submissions (isStudent = false) go straight to 'students' as Active
+ * and get a sequential admission number (SH-0001, SH-0002, …).
  */
 export const submitAdmission = async (formData, isStudent) => {
   try {
     formData.isStudentSubmission = isStudent;
+
+    // Normalise once so duplicates compare correctly everywhere.
+    if (formData.email) formData.email = String(formData.email).trim().toLowerCase();
+    if (formData.phone) formData.phone = String(formData.phone).trim();
+
+    // Website submissions need no portal account: if the visitor is signed in
+    // (portal student OR anonymous website session) we key by uid, otherwise
+    // we use an auto-ID. Either way it lands in Pending — never in students.
+    if (isStudent) {
+      const auth = getAuth();
+      const uid = auth.currentUser ? auth.currentUser.uid : null;
+      if (uid) {
+        formData.uid = uid;
+        formData._selfUid = uid;
+      }
+    }
+
     await validateStudentData(formData);
-    
+
+    // Every request gets a unique sequential admission number. It is kept on
+    // the pending record and carried over to the student record on approval,
+    // so the number never changes and never repeats.
+    const admissionNo = await ensureStudentId(formData);
+    formData.admissionNo = admissionNo;
+
     // Add timestamps and role
     formData.createdAt = serverTimestamp();
     formData.updatedAt = serverTimestamp();
     formData.role = "Student"; // Crucial for login routing
 
-    // Check if auto-approval applies for "Paid" student admissions
-    const autoApprove = isStudent && formData.paymentMethod === "Paid";
-
     if (isStudent) {
-      const auth = getAuth();
-      const uid = auth.currentUser ? auth.currentUser.uid : null;
-      if (!uid) throw new Error("Student must be logged in to submit admission");
+      const uid = formData.uid || null;
+      delete formData._selfUid;
 
-      if (!autoApprove) {
-        // Self Registration (Pay Later)
-        formData.approvalStatus = "Pending";
-        formData.status = "Pending";
-        await setDoc(doc(db, "admissions", uid), formData, { merge: true });
+      // Website / self submission — ALWAYS pending, NEVER directly active.
+      formData.approvalStatus = "Pending";
+      formData.status = "Pending";
+      let admissionId = uid;
+      if (admissionId) {
+        await setDoc(doc(db, "admissions", admissionId), formData, { merge: true });
       } else {
-        // Auto-Approved Student
-        formData.approvalStatus = "Approved";
-        formData.status = "Active";
-        await setDoc(doc(db, "students", uid), formData, { merge: true });
+        // Pure website form (no account at all) — auto-ID record.
+        const ref = await addDoc(collection(db, "admissions"), formData);
+        admissionId = ref.id;
       }
+
+      // Notify the admin (in-app + email). Failures here must never block
+      // the submission itself.
+      try {
+        const { notifyNewAdmission } = await import("./notificationService.js");
+        notifyNewAdmission({ id: admissionId, ...formData }).catch(() => {});
+        const { sendAdmissionReceivedMail, sendAdminNewAdmissionMail } = await import("./emailService.js");
+        sendAdmissionReceivedMail({ id: admissionId, ...formData }).catch(() => {});
+        const { getSettings } = await import("./settingsService.js?v=ui1");
+        getSettings().then((settings) => {
+          if (settings && settings.adminEmail) {
+            sendAdminNewAdmissionMail(settings.adminEmail, { id: admissionId, ...formData }).catch(() => {});
+          }
+        }).catch(() => {});
+      } catch (_) { /* notifications are best-effort */ }
+
+      return { success: true, admissionId, admissionNo };
     } else {
       // Admin Admission
       formData.approvalStatus = "Approved";
@@ -173,11 +212,32 @@ export const initAdmissionsUI = async () => {
 
   window.viewPaymentScreenshot = async (studentId) => {
     try {
-        const { loadStudentDocuments } = await import("./documentUploadService.js");
-        const docs = await loadStudentDocuments(studentId);
-        if (docs && docs.selfie) {
+        // 1. Prefer the payment screenshot stored on the admission itself.
+        const { doc: fsDoc, getDoc: fsGet } = await import("firebase/firestore");
+        const { db: _db } = await import("../firebase/firebase.js");
+        let shot = null;
+        try {
+          const aSnap = await fsGet(fsDoc(_db, "admissions", studentId));
+          if (aSnap.exists() && aSnap.data().paymentScreenshotUrl) shot = aSnap.data().paymentScreenshotUrl;
+        } catch (_) { /* fall through to documents */ }
+        // 2. Fall back to the single student photo (or legacy selfie/profile).
+        if (!shot) {
+          const { loadStudentDocuments, getStudentPhoto } = await import("./documentUploadService.js");
+          const docs = await loadStudentDocuments(studentId);
+          // Payment screenshots are stored under `paymentScreenshot`;
+          // otherwise show the student's single photo.
+          shot = (docs && docs.paymentScreenshot) || getStudentPhoto(docs, null);
+        }
+        // 3. Resolve "firestore:<key>" markers to the real stored file.
+        if (shot && String(shot).startsWith("firestore:")) {
+          const key = String(shot).split(":")[1];
+          const { loadStudentDocuments } = await import("./documentUploadService.js");
+          const docs = await loadStudentDocuments(studentId);
+          shot = (docs && docs[key]) || null;
+        }
+        if (shot) {
             const win = window.open("", "_blank");
-            win.document.write('<html><body style="margin:0; display:flex; justify-content:center; align-items:center; background:#111;"><img src="' + docs.selfie + '" style="max-width:100%; max-height:100vh; object-fit:contain;"/></body></html>');
+            win.document.write('<html><body style="margin:0; display:flex; justify-content:center; align-items:center; background:#111;"><img src="' + shot + '" style="max-width:100%; max-height:100vh; object-fit:contain;"/></body></html>');
         } else {
             window.showToast("No screenshot found.", "warning");
         }
@@ -188,14 +248,47 @@ export const initAdmissionsUI = async () => {
 
   // Setup tabs if admin
   if (isAdminOrManager) {
+    // Theme-aware Approve / Reject buttons (dark default + light-mode).
+    // Injected once so both themes stay in sync — no hardcoded colors.
+    if (!document.getElementById("admission-action-styles")) {
+      const st = document.createElement("style");
+      st.id = "admission-action-styles";
+      st.textContent = `
+        .btn-approve, .btn-reject { padding: 4px 12px; border-radius: 999px; margin-right: 4px; font-weight: 600; cursor: pointer; transition: filter .15s, transform .1s; }
+        .btn-approve:last-child, .btn-reject:last-child { margin-right: 0; }
+        .btn-approve { background: rgba(16,185,129,.14); color: var(--accent-emerald); border: 1px solid rgba(16,185,129,.45); }
+        .btn-reject { background: rgba(244,63,94,.14); color: var(--accent-red); border: 1px solid rgba(244,63,94,.45); }
+        .btn-approve:hover, .btn-reject:hover { filter: brightness(1.15); }
+        .btn-approve:active, .btn-reject:active { transform: scale(.97); }
+      `;
+      document.head.appendChild(st);
+    }
     const pendingTab = document.getElementById("tab-pending-approval");
     if (pendingTab) pendingTab.style.display = "inline-block";
-    
-    // Listen to queue
+
+    // Listen to queue (new-arrival toast + beep live in adminNotificationUI —
+    // single alert path, no duplicate toasts).
     listenToPendingAdmissions((records) => {
       const tbody = document.getElementById("pending-admissions-body");
       if (!tbody) return;
-      
+
+      // Self-heal: records created before admission numbers existed (or
+      // written directly by the website without one) get a unique SH- number
+      // assigned silently in the background. Approval carries it forward.
+      records
+        .filter((r) => !r.studentId && !r.admissionNo)
+        .forEach(async (r) => {
+          try {
+            const tmp = {};
+            await ensureStudentId(tmp);
+            await updateDoc(doc(db, "admissions", r.id), {
+              studentId: tmp.studentId,
+              admissionNo: tmp.studentId,
+              updatedAt: serverTimestamp(),
+            });
+          } catch (_) { /* one failure never blocks the list */ }
+        });
+
       // Update tab badge with count
       const pendingTab = document.getElementById("tab-pending-approval");
       if (pendingTab && records.length > 0) {
@@ -252,9 +345,9 @@ export const initAdmissionsUI = async () => {
             <td>${r.phone}</td>
             <td>${r.planName}</td>
             <td>${d}</td>
-            <td style="text-align:right;">
-              <button class="btn btn-sm" onclick="window.approveStudent('${r.id}')" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; padding:4px 12px; border-radius:999px; margin-right:4px;">Approve</button>
-              <button class="btn btn-sm" onclick="window.rejectStudent('${r.id}')" style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:4px 12px; border-radius:999px;">Reject</button>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="btn btn-sm btn-approve" onclick="window.approveStudent('${r.id}')">Approve</button>
+              <button class="btn btn-sm btn-reject" onclick="window.rejectStudent('${r.id}')">Reject</button>
             </td>
           </tr>
         `;
@@ -455,7 +548,7 @@ export const initAdmissionsUI = async () => {
 
           <div id="admin-payment-step-upi" style="display: none; padding: 1.5rem;">
             <div style="text-align: center; margin-bottom: 1.5rem;">
-              <img src="/payment-qr.jpeg" class="payment-qr-img" alt="QR Code" style="width: 180px; height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem;" onerror="this.onerror=null; this.src='https://via.placeholder.com/180?text=QR+Code';" />
+              <img src="" class="payment-qr-img" alt="Scan to Pay" style="width: 180px; height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem;" />
               <div style="font-weight: 600; color: var(--text-primary);">Scan to Pay: <span style="color: var(--primary);">${amountText}</span></div>
             </div>
             <div class="form-group" style="margin-bottom: 1.5rem;">
@@ -479,16 +572,8 @@ export const initAdmissionsUI = async () => {
       document.body.insertAdjacentHTML('beforeend', modalHtml);
       document.getElementById("admin-payment-modal").showModal();
       
-      // Fetch dynamic QR code
-      import("./settingsService.js?v=ui1").then(({ getSettings }) => {
-        getSettings().then(settings => {
-          if (settings.qrCodeUrl) {
-            document.querySelectorAll('.payment-qr-img').forEach(img => {
-              img.src = settings.qrCodeUrl;
-            });
-          }
-        });
-      });
+      // Paint the single live QR (upload once in Settings → Payment Settings).
+      import("./qrService.js").then(({ paintQrImages }) => paintQrImages()).catch(() => {});
       return;
     }
 

@@ -19,10 +19,51 @@ export const approveAdmission = async (admissionId) => {
     data.approvalStatus = "Approved";
     data.status = "Active";
     data.updatedAt = new Date().toISOString();
-    // Pending admissions are always written at admissions/{authUid} (student
-    // self-submission) — carry the uid onto the student doc so the portal
-    // card knows a real login account exists.
-    data.uid = admissionId;
+    // Pending admissions from logged-in portal students are written at
+    // admissions/{authUid} — carry the uid onto the student doc so the
+    // portal knows a real login account exists. Pure website forms carry NO
+    // uid (no account was created), so leave it out: stamping a fake uid
+    // would later block the admin from creating the portal login.
+    if (data.uid) {
+      data.uid = admissionId;
+    } else {
+      delete data.uid;
+    }
+
+    // Every approved student carries a unique sequential admission number.
+    // Website requests already have one; older records get one now.
+    if (!data.studentId || String(data.studentId).trim() === "") {
+      try {
+        const { ensureStudentId } = await import("./studentIdService.js");
+        const tmp = { ...data };
+        await ensureStudentId(tmp);
+        data.studentId = tmp.studentId;
+        data.admissionNo = tmp.admissionNo || tmp.studentId;
+      } catch (e) {
+        console.warn("Could not assign admission number:", e?.message || e);
+      }
+    }
+    if (!data.admissionNo) data.admissionNo = data.studentId || "";
+
+    // Final duplicate guard (staff can read all collections): the same phone
+    // or email must never enter the main students list twice.
+    try {
+      const phoneQ = query(collection(db, "students"), where("phone", "==", data.phone));
+      const phoneSnap = await getDocs(phoneQ);
+      if (phoneSnap.docs.some(d => d.id !== admissionId)) {
+        throw new Error(`Phone number ${data.phone} is already registered for another student.`);
+      }
+      const normEmail = String(data.email || "").trim().toLowerCase();
+      if (normEmail) {
+        const emailQ = query(collection(db, "students"), where("email", "==", normEmail));
+        const emailSnap = await getDocs(emailQ);
+        const dup = emailSnap.docs.some(d => d.id !== admissionId);
+        if (dup) throw new Error(`Email ${data.email} is already registered for another student.`);
+      }
+    } catch (e) {
+      if (/already registered/.test(e?.message || "")) return { success: false, error: e.message };
+      console.warn("Pre-approval duplicate check skipped:", e?.message || e);
+    }
 
     // Handle seat assignment if seat was selected
     let assignedSeat = data.seatAssigned || data.seatNumber;
@@ -67,7 +108,13 @@ export const approveAdmission = async (admissionId) => {
 
     // Remove from admissions collection
     await deleteDoc(admissionRef);
-    
+
+    // Inform the student by email (best-effort — approval already succeeded).
+    try {
+      const { sendAdmissionApprovedMail } = await import("./emailService.js");
+      sendAdmissionApprovedMail({ id: admissionId, ...data }).catch(() => {});
+    } catch (_) { /* email is best-effort */ }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -121,6 +168,13 @@ export const rejectAdmission = async (admissionId, reason) => {
     } catch (e) {
       console.warn("Could not update users document:", e);
     }
+
+    // Inform the student by email (best-effort — rejection already recorded).
+    try {
+      const rejectedData = docSnap.exists() ? docSnap.data() : {};
+      const { sendAdmissionRejectedMail } = await import("./emailService.js");
+      sendAdmissionRejectedMail({ id: admissionId, ...rejectedData }, reason || "").catch(() => {});
+    } catch (_) { /* email is best-effort */ }
 
     return { success: true };
   } catch (error) {

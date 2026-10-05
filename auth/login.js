@@ -42,12 +42,10 @@ export const getRedirectUrlForRole = (rawRole) => {
 };
 
 /**
- * Complete a login: resolve the user's profile/role, cache it in
- * localStorage, then redirect to that role's dashboard. Shared by the staff
- * email login and the Student Portal (phone/email) login.
- * @param {Object} user - authenticated Firebase user
+ * Resolve the user's profile/role WITHOUT redirecting (shared lookup).
+ * @returns {Promise<{userDoc, docId}>}
  */
-export const completeLogin = async (user) => {
+const resolveUserRole = async (user) => {
     let userDoc = null;
     let docId = user.uid;
 
@@ -113,10 +111,22 @@ export const completeLogin = async (user) => {
         );
       }
     }
-    
+
     if (userDoc.status === "disabled" || userDoc.status === "Inactive" || userDoc.status === "Old" || userDoc.status === "Old Student") {
       throw new Error("Account Disabled, Inactive, or Moved to Old Students. Please contact administration.");
     }
+
+    return { userDoc, docId };
+};
+
+/**
+ * Complete a login: resolve the user's profile/role, cache it in
+ * localStorage, then redirect to that role's dashboard. Shared by the staff
+ * email login and the Student Portal (phone/email) login.
+ * @param {Object} user - authenticated Firebase user
+ */
+export const completeLogin = async (user) => {
+    const { userDoc, docId } = await resolveUserRole(user);
 
     localStorage.setItem("userRole", userDoc.role);
     localStorage.setItem("userId", docId); // Store actual doc ID, whether UID or auto-id
@@ -140,9 +150,11 @@ export const handleLogin = async (email, password) => {
 };
 
 /**
- * Handle Student Portal login (10-digit phone or email + password)
- * Resolves the role and redirects explicitly — never leaves the login page
- * hanging silently if profile lookup fails.
+ * Handle Student Portal login (10-digit phone or email + password).
+ * STUDENTS ONLY: any staff/admin account is signed straight back out —
+ * this gate is what keeps non-students out of the student portal even if
+ * they know a staff password. Resolves the role and redirects explicitly —
+ * never leaves the login page hanging silently if profile lookup fails.
  * @param {string} identifier - phone number or email
  * @param {string} password 
  */
@@ -150,7 +162,20 @@ export const handlePhoneLogin = async (identifier, password) => {
   try {
     await setSessionPersistence();
     const user = await loginWithPhone(identifier, password);
-    await completeLogin(user);
+    const { userDoc, docId } = await resolveUserRole(user);
+    if (userDoc.role !== ROLES.STUDENT) {
+      // Not a student — sign out immediately and refuse entry.
+      try {
+        const { logout } = await import("../services/authService.js");
+        await logout();
+      } catch (_) {}
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userId");
+      throw new Error("This login is for students only. Staff, please use the admin portal.");
+    }
+    localStorage.setItem("userRole", userDoc.role);
+    localStorage.setItem("userId", docId);
+    window.location.href = getRedirectUrlForRole(userDoc.role);
   } catch (error) {
     throw new Error(toUserFriendlyAuthError(error));
   }

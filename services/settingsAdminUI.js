@@ -5,33 +5,42 @@ import { fetchAllTemplates, addTemplate, updateTemplate, deleteTemplate } from "
  * Initializes the Settings Admin UI
  */
 export const initSettingsAdminUI = async () => {
-  const saveBtn = document.querySelector('#page-settings .btn-primary');
-  const qrInput = document.getElementById('setting-qr-url');
   const qrUpload = document.getElementById('setting-qr-upload');
   const qrPreview = document.getElementById('setting-qr-preview');
+  const qrEmpty = document.getElementById('setting-qr-empty');
+  const qrStatus = document.getElementById('setting-qr-status');
+  const adminEmailInput = document.getElementById('setting-admin-email');
   const langSelect = document.getElementById('setting-language');
-  
-  if (!saveBtn || !qrInput) return;
+
+  if (!saveBtn) return;
+
+  const paintQrPreview = (url) => {
+    if (url) {
+      if (qrPreview) { qrPreview.src = url; qrPreview.style.display = 'block'; }
+      if (qrEmpty) qrEmpty.style.display = 'none';
+    } else {
+      if (qrPreview) { qrPreview.src = ''; qrPreview.style.display = 'none'; }
+      if (qrEmpty) qrEmpty.style.display = 'block';
+    }
+  };
+
+  // The currently saved QR (upload-only now). Kept so saving settings
+  // without uploading a new QR never wipes the existing one.
+  let savedQrUrl = "";
 
   // Load existing settings
   try {
     const currentSettings = await getSettings();
     if (currentSettings.qrCodeUrl) {
-      if (currentSettings.qrCodeUrl.startsWith('data:image')) {
-        if (qrPreview) {
-          qrPreview.src = currentSettings.qrCodeUrl;
-          qrPreview.style.display = 'block';
-        }
-      } else {
-        qrInput.value = currentSettings.qrCodeUrl;
-        if (qrPreview) {
-          qrPreview.src = currentSettings.qrCodeUrl;
-          qrPreview.style.display = 'block';
-        }
-      }
+      // Backward compatible: shows previously saved uploads AND old image URLs.
+      savedQrUrl = currentSettings.qrCodeUrl;
+      paintQrPreview(savedQrUrl);
     }
     if (langSelect && currentSettings.language) {
       langSelect.value = currentSettings.language;
+    }
+    if (adminEmailInput && currentSettings.adminEmail) {
+      adminEmailInput.value = currentSettings.adminEmail;
     }
   } catch (error) {
     console.error("Failed to load settings:", error);
@@ -54,9 +63,8 @@ export const initSettingsAdminUI = async () => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         uploadedBase64 = ev.target.result;
-        qrPreview.src = uploadedBase64;
-        qrPreview.style.display = 'block';
-        qrInput.value = ''; // clear url input if file uploaded
+        paintQrPreview(uploadedBase64);
+        if (qrStatus) qrStatus.textContent = 'New QR selected — press Save Changes.';
       };
       reader.readAsDataURL(file);
     });
@@ -70,19 +78,37 @@ export const initSettingsAdminUI = async () => {
     saveBtn.disabled = true;
 
     try {
-      // Prioritize uploaded image over URL string
-      const qrCodeUrl = uploadedBase64 || qrInput.value.trim();
-      const language = langSelect ? langSelect.value : "en";
-      
-      await saveSettings({
-        qrCodeUrl: qrCodeUrl,
-        language: language
-      });
-      
+      // Upload-only: a fresh upload wins, otherwise the saved QR is kept.
+      // Keys are included ONLY for fields present on this dashboard, so
+      // saving from a page without the Payment card can never wipe the QR
+      // or the admin email.
+      const payload = {};
+      if (qrUpload || qrPreview) {
+        payload.qrCodeUrl = uploadedBase64 || savedQrUrl || "";
+      }
+      if (adminEmailInput) {
+        payload.adminEmail = adminEmailInput.value.trim().toLowerCase();
+      }
+      if (langSelect) {
+        payload.language = langSelect.value;
+      }
+
+      await saveSettings(payload);
+      if (payload.qrCodeUrl !== undefined) {
+        savedQrUrl = payload.qrCodeUrl;
+        uploadedBase64 = null;
+        // Refresh the portal-wide QR cache so the new code shows everywhere.
+        import('./qrService.js').then(({ refreshQrCache }) => refreshQrCache()).catch(() => {});
+        if (qrStatus) qrStatus.textContent = payload.qrCodeUrl ? 'QR live across the portal ✓' : '';
+        if (qrUpload) qrUpload.value = '';
+      }
+
       // Immediately trigger language switch
-      import('./translationService.js').then(({ setLanguage }) => {
-        setLanguage(language);
-      });
+      if (langSelect) {
+        import('./translationService.js').then(({ setLanguage }) => {
+          setLanguage(langSelect.value);
+        });
+      }
       
       // showToast is defined globally in app.js
       if (typeof window.showToast === 'function') {

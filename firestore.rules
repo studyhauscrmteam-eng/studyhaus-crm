@@ -161,6 +161,33 @@ service cloud.firestore {
       allow update, delete: if isStaff();
     }
 
+    // ---------- counters (sequential student IDs — atomic via transaction) ----------
+    match /counters/{counterId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if isOwner();
+    }
+
+    // ---------- in-app admin notifications ----------
+    match /notifications/{notifId} {
+      allow create: if signedIn();
+      allow read: if isStaff();
+      // Managers+ can edit anything; all staff may only flip the read flag
+      // (so opening Notifications clears the bell for everyone).
+      allow update: if isManagerUp() || (
+        isStaff() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+      );
+      allow delete: if isManagerUp();
+    }
+
+    // ---------- outgoing mail queue (Trigger Email extension) ----------
+    match /mail/{mailId} {
+      allow create: if signedIn();
+      allow read: if isStaff();
+      allow update, delete: if isStaff();
+    }
+
     // ---------- MISSING collections (were default-deny = permission-denied) ----------
     match /visitors/{visitorId} {
       allow read, write: if isStaff();

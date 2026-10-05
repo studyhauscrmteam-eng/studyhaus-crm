@@ -106,17 +106,18 @@ const fetchMissingPhotos = async (records) => {
   for (const rec of records) {
     if (studentPhotos[rec.studentId] === undefined) {
       try {
-        // Primary: studentDocuments/{id}.profilePhoto (portal upload),
-        // then the admission selfie, then the denormalised student fields.
+        // Primary: the single canonical studentDocuments/{id}.photo
+        // (legacy profilePhoto / selfie copies still work as fallback),
+        // then the denormalised student fields.
         const docsSnap = await getDoc(doc(db, "studentDocuments", rec.studentId));
         const dd = docsSnap.exists() ? docsSnap.data() : null;
-        let photoUrl = (dd && (dd.profilePhoto || dd.selfie)) ? (dd.profilePhoto || dd.selfie) : null;
+        let photoUrl = (dd && (dd.photo || dd.profilePhoto || dd.selfie)) ? (dd.photo || dd.profilePhoto || dd.selfie) : null;
 
         // Fallback: students/{id} denormalised photo fields
         if (!photoUrl) {
           const stuSnap = await getDoc(doc(db, "students", rec.studentId));
           const sd = stuSnap.exists() ? stuSnap.data() : null;
-          photoUrl = (sd && (sd.profilePhotoUrl || sd.photoUrl || sd.selfieUrl)) || null;
+          photoUrl = (sd && (sd.profilePhotoUrl || sd.photoUrl || sd.photo || sd.selfieUrl)) || null;
         }
 
         studentPhotos[rec.studentId] = photoUrl; // null means "checked, no photo"

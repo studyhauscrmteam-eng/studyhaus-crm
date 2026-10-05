@@ -44,16 +44,27 @@ const renderAnnouncementList = () => {
   const unread = countUnread(unreadIds);
   const readCount = announcements.length - unread;
 
+  // Admission alerts (website form submissions) share the same bell.
+  const admissionUnread = window.__admissionUnread || 0;
+  const total = unread + admissionUnread;
+  const alertsBlock = typeof window.__renderAdmissionAlerts === "function"
+    ? window.__renderAdmissionAlerts()
+    : "";
+
   // Update badges AND the topbar bell dot with the UNREAD count only.
   // Both start hidden in the template, so zero means zero everywhere.
   document.querySelectorAll('.nav-badge').forEach(badge => {
-    badge.textContent = unread > 9 ? "9+" : String(unread);
-    badge.style.display = unread > 0 ? 'inline-block' : 'none';
+    badge.textContent = total > 9 ? "9+" : String(total);
+    badge.style.display = total > 0 ? 'inline-block' : 'none';
   });
-  const bellDot = document.getElementById("topbar-notif-dot");
-  if (bellDot) bellDot.style.display = unread > 0 ? "" : "none";
+  // The bell pill itself is painted by adminNotificationUI (count bubble);
+  // only fall back to the plain dot when that module hasn't run.
+  if (!window.__admissionBadgesLive) {
+    const bellDot = document.getElementById("topbar-notif-dot");
+    if (bellDot) bellDot.style.display = total > 0 ? "" : "none";
+  }
 
-  if (announcements.length === 0) {
+  if (announcements.length === 0 && !alertsBlock) {
     notifList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted);">No announcements scheduled.</div>`;
     renderDashboardBanner([]);
     return;
@@ -64,7 +75,7 @@ const renderAnnouncementList = () => {
     ? `<div style="text-align:center; padding:0.5rem;"><button class="btn btn-ghost btn-sm" onclick="window.toggleReadAnnouncements()">${showReadAdmin ? "Hide read" : `Show read (${readCount})`}</button></div>`
     : "";
 
-  if (visible.length === 0) {
+  if (visible.length === 0 && !alertsBlock) {
     notifList.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted);">All caught up — no unread announcements.</div>` + toggle;
     return;
   }
@@ -111,9 +122,13 @@ const renderAnnouncementList = () => {
         </div>
       `;
     });
-    notifList.innerHTML = html + toggle;
+    notifList.innerHTML = alertsBlock + html + toggle;
   renderDashboardBanner(announcements);
 };
+
+// Single entry point for badge/list refresh (called by adminNotificationUI
+// when admission alerts change, so two listeners never fight over badges).
+window.__refreshNotifBadges = () => { try { renderAnnouncementList(); } catch (_) {} };
 
 /**
  * Dashboard banner shows the latest LIVE announcement, or hides entirely

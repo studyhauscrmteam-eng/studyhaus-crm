@@ -341,9 +341,10 @@ window.calculatePaymentAmount = async () => {
 
 /**
  * Makes the student shell real: sidebar/topbar show THIS student's name and
- * photo, the notification badge counts their pending payments + open
- * complaints, and the admin global-search box is hidden (students have no
+ * photo, and the admin global-search box is hidden (students have no
  * global search — their tables are on their own pages).
+ * The notification badge + bell + tab title are owned entirely by
+ * renderStudentNotifications below (single writer, like the admin bell).
  */
 const syncStudentChrome = (s, photoUrl, notifCount) => {
   try {
@@ -368,15 +369,66 @@ const syncStudentChrome = (s, photoUrl, notifCount) => {
 
     const search = document.querySelector(".topbar-search");
     if (search) search.style.display = "none";
-
-    const badge = document.querySelector('.nav-item[data-page="notifications"] .nav-badge');
-    if (badge) {
-      if (notifCount > 0) { badge.textContent = notifCount > 9 ? "9+" : String(notifCount); badge.style.display = ""; }
-      else { badge.textContent = "0"; badge.style.display = "none"; }
-    }
-    const bellDot = document.getElementById("topbar-notif-dot");
-    if (bellDot) bellDot.style.display = notifCount > 0 ? "" : "none";
   } catch (e) { console.warn("[portal] chrome sync failed:", e); }
+};
+
+// WhatsApp-style student alerts: bell pill, tab badge, beep + toast.
+const S_BASE_TITLE = (typeof document !== "undefined" && document.title) || "Studyhaus";
+let __sNotifFirst = true;
+let __sKnownIds = new Set();
+
+const sBeep = () => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    [0, 0.18].forEach((delay, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = i === 0 ? 880 : 660;
+      osc.type = "sine";
+      const t = ctx.currentTime + delay;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      osc.start(t);
+      osc.stop(t + 0.16);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), 600);
+  } catch (_) {}
+};
+
+const sPaintBell = (unread) => {
+  const dot = document.getElementById("topbar-notif-dot");
+  if (!dot) return;
+  if (unread > 0) {
+    dot.style.display = "flex";
+    dot.style.width = "auto";
+    dot.style.height = "16px";
+    dot.style.minWidth = "16px";
+    dot.style.padding = "0 4px";
+    dot.style.alignItems = "center";
+    dot.style.justifyContent = "center";
+    dot.style.top = "0px";
+    dot.style.right = "0px";
+    dot.style.fontSize = "10px";
+    dot.style.fontWeight = "700";
+    dot.style.color = "#fff";
+    dot.style.backgroundColor = "#ef4444";
+    dot.style.borderRadius = "999px";
+    dot.textContent = unread > 9 ? "9+" : String(unread);
+  } else {
+    dot.style.display = "none";
+    dot.textContent = "";
+  }
+};
+
+const sPaintTab = (unread) => {
+  try {
+    document.title = unread > 0 ? `(${unread > 9 ? "9+" : unread}) ${S_BASE_TITLE}` : S_BASE_TITLE;
+  } catch (_) {}
 };
 
 // Announcements broadcast by staff (read-only for students — no delete).
@@ -535,17 +587,37 @@ const renderStudentNotifications = () => {
     return ids.filter(isRead).length;
   })();
 
-  // Badge counts only unread personal items.
+  // Badge counts unread personal items + unread desk announcements.
   const unreadPersonal = (monthsOwed > 0 && !isRead("due") ? 1 : 0)
     + pendings.filter(p => !isRead(`pay_${p.id}`)).length
     + opens.filter(c => !isRead(c.resolutionNote ? `creply_${c.id}` : `copen_${c.id}`)).length;
+  const unreadBroadcast = visible.filter(a => !isRead(`ann_${a.id}`)).length;
+  const totalUnread = unreadPersonal + unreadBroadcast;
   const badge = document.querySelector('.nav-item[data-page="notifications"] .nav-badge');
   if (badge) {
-    if (unreadPersonal > 0) { badge.textContent = unreadPersonal > 9 ? "9+" : String(unreadPersonal); badge.style.display = ""; }
+    if (totalUnread > 0) { badge.textContent = totalUnread > 9 ? "9+" : String(totalUnread); badge.style.display = ""; }
     else { badge.textContent = "0"; badge.style.display = "none"; }
   }
-  const bellDot = document.getElementById("topbar-notif-dot");
-  if (bellDot) bellDot.style.display = unreadPersonal > 0 ? "" : "none";
+  // WhatsApp-style: count pill on the bell, (n) on the browser tab,
+  // beep + toast when genuinely new items arrive (skip first render).
+  sPaintBell(totalUnread);
+  sPaintTab(totalUnread);
+  const currentIds = [];
+  if (monthsOwed > 0 && !isRead("due")) currentIds.push("due");
+  pendings.forEach(p => { if (!isRead(`pay_${p.id}`)) currentIds.push(`pay_${p.id}`); });
+  opens.forEach(c => currentIds.push(c.resolutionNote ? `creply_${c.id}` : `copen_${c.id}`));
+  visible.forEach(a => { if (!isRead(`ann_${a.id}`)) currentIds.push(`ann_${a.id}`); });
+  if (!__sNotifFirst) {
+    const fresh = currentIds.filter((id) => !__sKnownIds.has(id));
+    if (fresh.length > 0) {
+      sBeep();
+      if (typeof window.showToast === "function") {
+        window.showToast(`🔔 You have ${fresh.length} new notification${fresh.length > 1 ? "s" : ""} — tap the bell.`, "info");
+      }
+    }
+  }
+  __sNotifFirst = false;
+  __sKnownIds = new Set(currentIds);
 
   const toggle = dismissedCount > 0
     ? `<div style="text-align:center; padding:0.5rem;"><button class="btn btn-ghost btn-sm" onclick="window.toggleStudentReadNotifs()">${showReadStudent ? "Hide read" : `Show dismissed (${dismissedCount})`}</button></div>`
@@ -570,7 +642,7 @@ window.toggleStudentReadNotifs = () => {
 };
 
 // Student's own documents — SAME backend as the admin view:
-// studentDocuments/{uid} (aadhaarFront, aadhaarBack, selfie, profilePhoto).
+// studentDocuments/{uid} (aadhaarFront, aadhaarBack, photo — one photo only).
 // Admin uploads appear here and student uploads appear in the admin panel:
 // one record, no duplicates, no second source.
 let docsLoadedFor = null;
@@ -761,7 +833,7 @@ const renderPortal = () => {
         <!-- Step 2: Pay Now Form -->
         <div id="payment-step-2" style="padding: 1.5rem; display: none;">
           <div style="text-align: center; margin-bottom: 1.5rem;">
-            <img src="/payment-qr.jpeg" class="payment-qr-img" alt="QR Code" style="width: 180px; height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem;" onerror="this.onerror=null; this.src='https://via.placeholder.com/180?text=QR+Code';" />
+            <img src="" class="payment-qr-img" alt="Scan to Pay" style="width: 180px; height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem;" />
             <div style="font-weight: 600; color: var(--text-primary);">Scan to Pay: <span id="payment-modal-amount" style="color: var(--primary);">₹--</span></div>
           </div>
           <div class="form-group">
@@ -894,11 +966,11 @@ const renderPortal = () => {
           btn.disabled = true;
         }
 
-        // Upload Admission Documents first if present
+        // Upload Admission Documents first if present (single photo + ID proofs)
         let docUrls = {};
         if (window.getSelectedDocumentFiles && window.uploadAdmissionDocuments) {
           const files = window.getSelectedDocumentFiles();
-          if (files.aadhaarFront || files.aadhaarBack || files.selfie) {
+          if (files.aadhaarFront || files.aadhaarBack || files.photo) {
             docUrls = await window.uploadAdmissionDocuments(files, s.id);
           }
         }
@@ -953,8 +1025,10 @@ const renderPortal = () => {
                 console.error("Failed to mark seat as occupied", e);
               }
             }
+            // Website requests ALWAYS stay Pending until an admin approves —
+            // even when paid now. The admin decides in Pending approval.
             if (paymentMethod === "Paid") {
-              window.showToast(window.t ? window.t('Payment verified! You are now admitted and will be redirected to your dashboard.') || "Payment verified! You are now admitted and will be redirected to your dashboard." : "Payment verified! You are now admitted and will be redirected to your dashboard.", "success");
+              window.showToast(window.t ? window.t('Payment received! Your request is now Pending Approval — the admin will confirm your admission.') || "Payment received! Your request is now Pending Approval — the admin will confirm your admission." : "Payment received! Your request is now Pending Approval — the admin will confirm your admission.", "success");
             } else {
               window.showToast(window.t ? window.t('Admission request submitted successfully and is Pending Approval!') || "Admission request submitted successfully and is Pending Approval!" : "Admission request submitted successfully and is Pending Approval!", "success");
             }
@@ -1023,7 +1097,7 @@ const renderPortal = () => {
         <!-- Step 2: Pay Now Form (Directly) -->
         <div id="pending-payment-step-2" style="padding: 1.5rem;">
           <div style="text-align: center; margin-bottom: 1.5rem;">
-            <img src="/payment-qr.jpeg" class="payment-qr-img" alt="QR Code" style="width: 180px; height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem;" onerror="this.onerror=null; this.src='https://via.placeholder.com/180?text=QR+Code';" />
+            <img src="" class="payment-qr-img" alt="Scan to Pay" style="width: 180px; height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem;" />
             <div style="font-weight: 600; color: var(--text-primary);">Scan to Pay</div>
           </div>
           <div class="form-group">
@@ -1047,7 +1121,7 @@ const renderPortal = () => {
         setTimeout(() => {
           const d1 = document.getElementById('doc-card-aadhaarFront');
           const d2 = document.getElementById('doc-card-aadhaarBack');
-          const d3 = document.getElementById('doc-card-selfie');
+          const d3 = document.getElementById('doc-card-photo');
           if (d1) d1.style.display = 'none';
           if (d2) d2.style.display = 'none';
           if (d3) {
@@ -1072,9 +1146,11 @@ const renderPortal = () => {
       let paymentScreenshotUrl = "";
       if (window.getSelectedDocumentFiles && window.uploadAdmissionDocuments) {
         const files = window.getSelectedDocumentFiles();
-        if (files.selfie) {
-          const urlMap = await window.uploadAdmissionDocuments({ selfie: files.selfie }, s.id);
-          paymentScreenshotUrl = urlMap.selfieUrl || "";
+        // Store as `paymentScreenshot` (NOT the student photo) so paying
+        // never overwrites the student's single photo.
+        if (files.photo) {
+          const urlMap = await window.uploadAdmissionDocuments({ paymentScreenshot: files.photo }, s.id);
+          paymentScreenshotUrl = urlMap.paymentScreenshotUrl || "";
         }
       }
 
@@ -1147,7 +1223,7 @@ const renderPortal = () => {
     // latest currentStudent so a stale closure can never show the wrong avatar.
     window.updateProfilePhoto = async () => {
       const live = currentStudent || s;
-      const livePhoto = live.profilePhotoUrl || live.photoUrl || null;
+      const livePhoto = live.profilePhotoUrl || live.photoUrl || live.photo || null;
       const liveInitials = (live.name || "ST").substring(0, 2).toUpperCase();
       const liveAvatar = livePhoto
         ? `<img src="${livePhoto}" alt="Profile" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
@@ -1243,7 +1319,8 @@ const renderPortal = () => {
     };
 
     // Get student photo from Firestore documents
-    const studentPhoto = (currentStudent || s).profilePhotoUrl || s.photoUrl || null;
+    const liveStudent = currentStudent || s;
+    const studentPhoto = liveStudent.profilePhotoUrl || liveStudent.photoUrl || liveStudent.photo || null;
     const avatarHtml = studentPhoto
       ? `<img src="${studentPhoto}" alt="${(s.name || "Student").replace(/"/g, "")}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(139,92,246,.15);color:var(--accent-violet);font-weight:700;font-size:1.75rem;">${initials}</div>`;
@@ -1288,7 +1365,7 @@ const renderPortal = () => {
           <div style="width: 100%;">
             <div style="font-weight:700; font-size:1rem; color:var(--text-primary);">${s.name || "Student"}</div>
             <div style="font-size:0.8rem; color:var(--text-muted); margin:2px 0 6px;">${s.planName || "No plan"} · Seat ${seatLabel} · ${s.status || "—"}</div>
-            ${s.profilePhotoUrl || s.photoUrl
+            ${s.profilePhotoUrl || s.photoUrl || s.photo
               ? `<button class="btn btn-ghost btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.25rem; font-size: 0.75rem;">Change Photo</button>`
               : `<button class="btn btn-primary btn-sm" onclick="window.updateProfilePhoto()" style="margin-top: 0.25rem; font-size: 0.75rem;">Add Photo</button>`}
           </div>
@@ -1420,8 +1497,8 @@ const renderPortal = () => {
               
               <!-- Student Info Block -->
               <div class="sp-idcard">
-                ${(s.profilePhotoUrl || s.photoUrl)
-                  ? `<div style="width: 50px; height: 50px; border-radius:50%; overflow:hidden; flex-shrink:0;"><img src="${s.profilePhotoUrl || s.photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" /></div>`
+                ${(s.profilePhotoUrl || s.photoUrl || s.photo)
+                  ? `<div style="width: 50px; height: 50px; border-radius:50%; overflow:hidden; flex-shrink:0;"><img src="${s.profilePhotoUrl || s.photoUrl || s.photo}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" /></div>`
                   : `<div class="avatar" style="width: 50px; height: 50px; background: var(--primary); font-size: 1.2rem;">${initials}</div>`}
                 <div>
                   <h4>${s.name}</h4>
@@ -1501,7 +1578,7 @@ const renderPortal = () => {
             <div class="sp-qr">
               <h4 style="margin:0; font-size: 0.9rem; color:var(--text-secondary); text-align:center;">Scan to Pay</h4>
               <div style="width: 160px; height: 160px; background:var(--bg-card); border:1px solid var(--border); border-radius: 8px; display:flex; align-items:center; justify-content:center; overflow: hidden;">
-                <img src="/payment-qr.jpeg" class="payment-qr-img" alt="Scan to Pay" style="width: 100%; height: 100%; object-fit: contain;" onerror="this.onerror=null; this.src='https://via.placeholder.com/160?text=QR+Code';" />
+                <img src="" class="payment-qr-img" alt="Scan to Pay" style="width: 100%; height: 100%; object-fit: contain;" />
               </div>
               <p style="font-size: 0.75rem; color:var(--text-secondary); text-align: center; margin: 0; line-height: 1.4;">Pay using GPay, PhonePe, or Paytm and enter the Txn ID here.</p>
             </div>
@@ -1598,14 +1675,8 @@ const renderPortal = () => {
     </div>
   `;
 
-  // Fetch dynamic QR code
-  getSettings().then(settings => {
-    if (settings.qrCodeUrl) {
-      document.querySelectorAll('.payment-qr-img').forEach(img => {
-        img.src = settings.qrCodeUrl;
-      });
-    }
-  });
+  // Paint the single live QR everywhere (upload once in Settings).
+  import("./qrService.js").then(({ paintQrImages }) => paintQrImages()).catch(() => {});
 
   // Keep the notifications page (bell + sidebar) in sync with live data.
   try { renderStudentNotifications(); } catch (e) { console.warn("[portal] notifications render failed:", e); }

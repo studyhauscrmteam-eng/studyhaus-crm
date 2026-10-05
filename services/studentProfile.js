@@ -1,4 +1,4 @@
-import { listenToAllStudents, softDeleteStudent, updateStudentProfile, createPortalLoginForStudent, clearPortalCredentials } from "./studentService.js?v=login6";
+import { listenToAllStudents, softDeleteStudent, permanentlyDeleteStudent, updateStudentProfile, createPortalLoginForStudent, clearPortalCredentials } from "./studentService.js?v=login6";
 import { searchStudents, filterStudents, sortStudents, paginateStudents } from "./studentDataProcessing.js";
 import { fetchPlansForDropdown } from "./admissionService.js";
 import { convertToOldStudent } from "./oldStudentService.js";
@@ -18,12 +18,20 @@ let availablePlans = [];
 
 /**
  * Single source of truth for a student's display photo.
- * Students upload via the portal to `profilePhotoUrl`/`photoUrl`
- * (denormalised) + `studentDocuments/{id}.profilePhoto`.
+ * There is only ONE photo per student now (`studentDocuments/{id}.photo`,
+ * denormalised to `profilePhotoUrl`/`photoUrl`). Legacy `selfie` /
+ * `profilePhoto` copies are still read as a fallback so old records keep
+ * showing their picture — new uploads always write the single `photo`.
  */
 export const getStudentPhotoUrl = (s) => {
   if (!s) return null;
-  return s.profilePhotoUrl || s.photoUrl || s.selfieUrl || null;
+  return s.profilePhotoUrl || s.photoUrl || s.photo || s.selfieUrl || null;
+};
+
+/** Legacy status normalisation: "Old Student" was written by older builds. */
+export const isOldStatus = (s) => {
+  const st = s && s.status;
+  return st === "Old" || st === "Old Student";
 };
 
 export const escAttr = (v) => String(v == null ? "" : v).replace(/"/g, "&quot;");
@@ -52,11 +60,13 @@ export const initStudentManagementUI = async () => {
   tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading students...</td></tr>`;
   
   listenToAllStudents((data) => {
-    // Exclude Old Students by default unless explicitly filtering for them
-    allStudents = data.filter(s => s.status !== "Old Student");
+    // Exclude Old students. Older builds wrote "Old Student" — treat both
+    // as old so they never leak into the active grid.
+    allStudents = data.filter(s => !isOldStatus(s));
     renderTable();
   }, (err) => {
-    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Failed to load students.</td></tr>`;
+    console.error("Student listener failed:", err);
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger);">Failed to load students. Check your connection and sign in again — nothing was deleted.</td></tr>`;
   });
 
   // Attach event listeners
@@ -69,11 +79,15 @@ export const initStudentManagementUI = async () => {
     });
   }
 
-  document.querySelectorAll(".filter-tab").forEach(tab => {
+  // NOTE: scoped to #page-students on purpose. A global ".filter-tab"
+  // selector also matches the Attendance / Analytics tabs — clicking those
+  // used to overwrite the student status filter (e.g. to "Present") and the
+  // whole student list would "disappear".
+  document.querySelectorAll("#page-students .filter-tab").forEach(tab => {
     tab.addEventListener("click", (e) => {
-      document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
-      e.target.classList.add("active");
-      currentFilters.status = e.target.innerText;
+      document.querySelectorAll("#page-students .filter-tab").forEach(t => t.classList.remove("active"));
+      e.currentTarget.classList.add("active");
+      currentFilters.status = e.currentTarget.textContent.trim();
       currentPage = 1;
       renderTable();
     });
@@ -120,8 +134,9 @@ const renderTable = () => {
   const tableBody = document.getElementById("students-table-body");
   if (!tableBody) return;
 
-  // 0. Exclude Old Students entirely from Active Management
-  let activeOnly = allStudents.filter(s => s.status !== "Old");
+  // 0. Exclude Old students entirely from Active Management
+  // (both "Old" and the legacy "Old Student" value).
+  let activeOnly = allStudents.filter(s => !isOldStatus(s));
 
   // 1. Search
   let processed = searchStudents(activeOnly, currentQuery);
@@ -327,7 +342,7 @@ const renderProfileModal = (s, role) => {
         </div>`; })()}
         <div>
           <h3 style="margin: 0; font-size: 1.25rem;">${s.name}</h3>
-          <div style="color: var(--text-muted);">${s.studentId || "No ID"} · ${s.status}</div>
+          <div style="color: var(--text-muted);">${s.studentId || s.admissionNo || "No ID"} · ${s.status || "Active"}</div>
           <div style="margin-top: 0.5rem; display:flex; gap: 0.5rem;">
             <a href="tel:${s.phone}" class="btn btn-primary sp-action-btn" style="padding: 0.25rem 0.75rem; font-size: 0.85rem; text-decoration: none;">Call</a>
             <button type="button" class="btn sp-action-btn" style="background: #25D366; color: white; border: none; padding: 0.25rem 0.75rem; font-size: 0.85rem;" onclick="window.triggerWhatsAppModal('${s.id}')">WhatsApp</button>
@@ -465,8 +480,13 @@ const renderProfileModal = (s, role) => {
 
           <div class="form-actions" style="margin-top: 2rem; justify-content: flex-end; ${hideForEmployee}">
             ${isOwner ? `<button type="button" class="btn btn-ghost" style="color: var(--danger); margin-right: auto;" onclick="window.triggerSoftDelete('${s.id}')">Delete Student</button>` : ''}
+            ${isOwner && s.email ? `<button type="button" class="btn btn-secondary sp-action-btn" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="window.triggerStudentEmail('${s.id}')">Email</button>` : ''}
             <button type="submit" class="btn btn-primary" id="btn-save-edit">Save Changes</button>
           </div>
+          ${isOwner ? `
+          <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--border); display: flex; justify-content: flex-end;">
+            <button type="button" class="btn btn-ghost" style="color: var(--danger); font-size: 0.78rem; padding: 0.25rem 0.5rem;" onclick="window.triggerPermanentDelete('${s.id}', '${(s.name || '').replace(/'/g, "\\'")}')">Delete permanently (cannot be undone)</button>
+          </div>` : ''}
         </form>
       </div>
 
@@ -527,16 +547,32 @@ const renderProfileModal = (s, role) => {
   }
 
   // Always try the canonical document store — the portal saves the photo to
-  // `studentDocuments/{id}.profilePhoto` (and denormalises it onto the
-  // student doc). Prefer profilePhoto, fall back to the admission selfie.
-  loadStudentDocuments(s.id).then(docs => {
-    if (docs && (docs.profilePhoto || docs.selfie)) {
+  // `studentDocuments/{id}.photo` (and denormalises it onto the
+  // student doc). Legacy `profilePhoto` / `selfie` copies still work.
+  loadStudentDocuments(s.id).then(async (docs) => {
+    if (!docs) return;
+    const { getStudentPhoto, backfillPhotoThumb } = await import("./documentUploadService.js");
+    const best = getStudentPhoto(docs, null);
+    if (best) {
       const avatarEl = document.getElementById(`sp-avatar-${s.id}`);
       if (avatarEl) {
-        const best = docs.profilePhoto || docs.selfie;
         avatarEl.innerHTML = `<img src="${best}" style="width:100%; height:100%; object-fit:cover;" alt="Photo" />`;
         avatarEl.style.background = "var(--bg-hover)";
       }
+      // Self-heal pre-thumbnail uploads: photo lives in documents but the
+      // main list field was never written — backfill it now so the table
+      // row picks it up over the live listener. No re-upload needed.
+      // Same heal shrinks oversized old list photos (>150KB full-size
+      // base64) to the fast thumbnail — those giants slow down EVERY
+      // student-list sync until replaced.
+      try {
+        const listPhoto = getStudentPhotoUrl(s);
+        if (!listPhoto) {
+          backfillPhotoThumb(s.id, best).catch(() => {});
+        } else if (String(listPhoto).startsWith("data:") && listPhoto.length > 150000 && best) {
+          backfillPhotoThumb(s.id, best).catch(() => {});
+        }
+      } catch (_) {}
     }
   }).catch(err => console.error("Failed to load photo", err));
 };
@@ -701,6 +737,52 @@ window.triggerSoftDelete = async (id) => {
     } else {
       window.showToast("Error: " + res.error, "error");
     }
+  }
+};
+
+window.triggerPermanentDelete = async (id, name) => {
+  const s = allStudents.find(x => x.id === id);
+  const label = (s && s.name) || name || "this student";
+  const first = await window.showCustomConfirm(
+    "Delete Permanently?",
+    `Permanently delete <b>${label}</b>?<br><br>This removes the student, login, documents and admission record, and frees the seat. <b>This cannot be undone.</b>`,
+    "Continue",
+    true
+  );
+  if (!first) return;
+  const second = await window.showCustomConfirm(
+    "Final Confirmation",
+    `Type-confirm: really erase <b>${label}</b> forever?<br><br>Move to Old Students instead if you only want to deactivate.`,
+    "Delete Forever",
+    true
+  );
+  if (!second) return;
+  const res = await permanentlyDeleteStudent(id);
+  if (res.success) {
+    window.showToast(`Permanently deleted ${label}.`, "success");
+    window.closeStudentProfile();
+  } else {
+    window.showToast("Error: " + res.error, "error");
+  }
+};
+
+window.triggerStudentEmail = async (id) => {
+  const s = allStudents.find(x => x.id === id);
+  if (!s || !s.email) {
+    window.showToast("No email address on this student record.", "warning");
+    return;
+  }
+  const subject = await window.showCustomPrompt("Send Email", `To: ${s.email}`, "Next", false);
+  if (subject === null) return;
+  const body = await window.showCustomPrompt("Send Email", "Message:", "Send", true);
+  if (body === null) return;
+  try {
+    const { sendCustomMail } = await import("./emailService.js");
+    const res = await sendCustomMail({ to: s.email, subject: subject || "Message from Studyhaus", body: body || "" });
+    if (res.success) window.showToast("Email queued for delivery.", "success");
+    else window.showToast("Could not queue email: " + res.error, "error");
+  } catch (e) {
+    window.showToast("Could not queue email: " + e.message, "error");
   }
 };
 

@@ -22,6 +22,7 @@ import { websiteAdminUI } from "./services/websiteAdminUI.js";
 import { openReportViewer, closeReportViewer } from "./services/reportAdminUI.js";
 import { initAnalyticsUI } from "./services/analyticsService.js";
 import { initAnnouncementAdminUI } from "./services/announcementAdminUI.js";
+import { initAdminNotificationUI } from "./services/adminNotificationUI.js";
 import { initStaffAdminUI } from "./services/staffAdminUI.js";
 import { initTasksAdminUI } from "./services/tasksAdminUI.js";
 import { initSettingsAdminUI } from "./services/settingsAdminUI.js?v=ui1";
@@ -97,6 +98,40 @@ initAuthGuard();
 import { onAuthStateChanged } from "./services/authService.js";
 
 let __crmInitDone = false;
+// Lazy page modules: initialised on FIRST open, not at login. Opening a
+// page you never visit used to still cost its Firestore listeners.
+const __pageInited = {};
+const __pageInitMap = {
+  "old-students": () => initOldStudentAdminUI(),
+  "attendance": () => initAttendanceAdminUI(),
+  "payments": () => { initPaymentAdminUI(); initRenewalAdminUI(); },
+  "complaints": () => initComplaintAdminUI(),
+  "seats": () => { initSeatMapUI(); initLiveSeatMapUI(); },
+  "live-seat-map": () => { initLiveSeatMapUI(); },
+  "expenses": () => initExpenseAdminUI(),
+  "visitors": () => initVisitorAdminUI(),
+  "message-logs": () => initMessageLogAdminUI(),
+  "memberships": () => initMembershipPlans(),
+  "staff": () => initStaffAdminUI(),
+  "tasks": () => initTasksAdminUI(),
+  "analytics": () => initAnalyticsUI(),
+  "settings": () => initSettingsAdminUI(),
+  "website-manager": () => websiteAdminUI.init(),
+  // (alias — never used by nav, kept so the key can't be missed again)
+  "website": () => websiteAdminUI.init(),
+};
+const initPageModule = (page) => {
+  if (!page || __pageInited[page]) return;
+  const fn = __pageInitMap[page];
+  if (!fn) return;
+  __pageInited[page] = true;
+  try {
+    fn();
+  } catch (e) {
+    __pageInited[page] = false;
+    console.error(`Page module '${page}' failed to init:`, e);
+  }
+};
 const initCrmModules = () => {
   if (__crmInitDone) return;
   __crmInitDone = true;
@@ -117,44 +152,33 @@ const initCrmModules = () => {
     initDashboardListeners();
     // Initialize the new unified Dashboard Reminders
     initDashboardReminders();
-    // Initialize membership plans live feed
-    initMembershipPlans();
-    // Initialize admissions flow
+    // Admissions flow (Pending queue + bell badge stay live)
     initAdmissionsUI();
-    // Initialize student management flow
+    // Core student table (live)
     initStudentManagementUI();
-    // Initialize attendance admin viewer
-    initAttendanceAdminUI();
-    // Initialize payment admin viewer
-    initPaymentAdminUI();
-    // Initialize complaints admin viewer
-    initComplaintAdminUI();
-    // Initialize Seat Map viewer
-    initSeatMapUI();
-    // Initialize Live Seat Map viewer
-    initLiveSeatMapUI();
-    // Initialize Expense viewer
-    initExpenseAdminUI();
-    // Initialize Visitor viewer
-    initVisitorAdminUI();
-    // Initialize Message Log viewer
-    initMessageLogAdminUI();
-    // Initialize Old Student viewer
-    initOldStudentAdminUI();
-    // Initialize Renewal Module
-    initRenewalAdminUI();
-    // Initialize Announcements
+    // Announcements + admission-alert bell (live)
     initAnnouncementAdminUI();
-    // Initialize Staff UI
-    initStaffAdminUI();
-    // Initialize Tasks UI
-    initTasksAdminUI();
-    // Initialize Settings Admin UI
-    initSettingsAdminUI();
-    // Initialize Website CMS Module
-    websiteAdminUI.init();
-    // Initialize the Analytics page (live Firestore numbers)
-    initAnalyticsUI();
+    // Admin admission-alert bell: count pill, tab badge, in-portal alerts
+    initAdminNotificationUI();
+
+    // Everything else boots on first page open (see __pageInitMap) so login
+    // stays fast no matter how much data grows. Wrap navigate() once.
+    if (!window.__lazyPagesWired && typeof window.navigate === "function") {
+      window.__lazyPagesWired = true;
+      const __origNavigate = window.navigate;
+      window.navigate = (page, ...rest) => {
+        const out = __origNavigate(page, ...rest);
+        try { initPageModule(page); } catch (_) {}
+        return out;
+      };
+    }
+    // The default page was already shown before this ran — init it now.
+    try {
+      const active = document.querySelector(".page.active");
+      if (active && active.id && active.id.startsWith("page-")) {
+        initPageModule(active.id.slice(5));
+      }
+    } catch (_) {}
 };
 
 // Wait for real Firebase Auth (not just localStorage) before attaching

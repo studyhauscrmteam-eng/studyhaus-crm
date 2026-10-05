@@ -66,6 +66,74 @@ export const softDeleteStudent = async (studentId) => {
 };
 
 /**
+ * PERMANENTLY delete a student and all of their linked records.
+ * This is irreversible: removes students/{id}, users/{id} (if present),
+ * studentDocuments/{id}, any admissions/{id} entry, and frees the seat.
+ * Related history (payments, attendance, renewals, complaints) is re-tagged
+ * with `studentDeleted: true` and kept for accounts, unless `wipeHistory`
+ * is true — pass wipeHistory only when the record was created by mistake.
+ *
+ * @param {string} studentId
+ * @param {{ wipeHistory?: boolean }} opts
+ */
+export const permanentlyDeleteStudent = async (studentId, opts = {}) => {
+  const { wipeHistory = false } = opts;
+  try {
+    if (!studentId) throw new Error("Missing student ID.");
+    const snap = await getDoc(doc(db, "students", studentId));
+    if (!snap.exists()) throw new Error("Student record not found.");
+    const data = snap.data() || {};
+
+    // 1. Free the seat (if one is assigned)
+    const seatNo = data.seatNumber || data.seatAssigned || "";
+    if (seatNo) {
+      try {
+        const seatSnap = await getDocs(query(collection(db, "seats"), where("seatNumber", "==", seatNo)));
+        for (const d of seatSnap.docs) {
+          const sd = d.data() || {};
+          if (!sd.assignedStudentId || sd.assignedStudentId === studentId) {
+            await updateDoc(d.ref, {
+              status: "Available",
+              assignedStudentId: null,
+              assignedStudentName: null,
+              planType: null,
+              lastUpdated: serverTimestamp()
+            });
+          }
+        }
+      } catch (_) { /* seat release is best-effort */ }
+    }
+
+    // 2. History collections: tag or wipe
+    const historyCols = ["payments", "attendance", "complaints", "renewals", "documents"];
+    for (const colName of historyCols) {
+      try {
+        const hSnap = await getDocs(query(collection(db, colName), where("studentId", "==", studentId)));
+        for (const d of hSnap.docs) {
+          if (wipeHistory) await deleteDoc(d.ref);
+          else await updateDoc(d.ref, { studentDeleted: true, updatedAt: serverTimestamp() });
+        }
+      } catch (_) { /* collection may be empty or denied — skip */ }
+    }
+
+    // 3. Delete linked docs (each best-effort so one failure never half-leaves)
+    const linkedRefs = [
+      doc(db, "students", studentId),
+      doc(db, "users", studentId),
+      doc(db, "studentDocuments", studentId),
+      doc(db, "admissions", studentId),
+    ];
+    for (const ref of linkedRefs) {
+      try { await deleteDoc(ref); } catch (_) { /* may not exist — fine */ }
+    }
+
+    return { success: true, name: data.name || "" };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Create the Student Portal login for an EXISTING student (admin sets the
  * Login ID + Password from the Student Info popup).
  *

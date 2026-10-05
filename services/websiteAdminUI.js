@@ -24,10 +24,44 @@ const escapeHtml = (str) =>
 const escapeAttr = escapeHtml;
 
 /**
- * Client-side Canvas Image Compression
- * Converts any uploaded image File into an optimized, high-quality base64 JPEG
+ * One-time compaction for already-stored website images: any data-URL image
+ * bigger than ~200KB gets re-encoded web-light. Shrinks the website_content
+ * doc permanently so every future open is fast. File paths untouched.
  */
-const compressImage = (file, maxWidth = 1000, quality = 0.8) => {
+const compactStoredImage = (src) => {
+  return new Promise((resolve) => {
+    if (!src || !String(src).startsWith("data:image") || String(src).length <= 200000) {
+      resolve(src);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const MAX = 640;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round((height / width) * MAX); width = MAX; }
+          else { width = Math.round((width / height) * MAX); height = MAX; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      } catch (_) {
+        resolve(src);
+      }
+    };
+    img.onerror = () => resolve(src);
+    img.src = src;
+  });
+};
+
+/**
+ * Client-side Canvas Image Compression (upload path).
+ * Web-light output (640px, q0.72) keeps the website_content doc small.
+ */
+const compressImage = (file, maxWidth = 640, quality = 0.72) => {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
       reject(new Error("Selected file is not an image."));
@@ -248,9 +282,12 @@ export const websiteAdminUI = {
 
   async init() {
     window.websiteAdminUI = this;
-    await this.loadData();
+    // Paint instantly from local defaults — never stare at "Loading..."
+    // waiting on the network. Firestore refresh lands right after.
+    try { this.render(); } catch (_) {}
     this.listenToPlans();
-    this.render();
+    try { await this.loadData(); } catch (_) {}
+    try { this.render(); } catch (_) {}
   },
 
   async loadData() {
@@ -273,6 +310,25 @@ export const websiteAdminUI = {
           services: finalServices,
           features: finalFeatures
         };
+
+        // Compact oversized stored images once (web-light), so the doc
+        // stays small and the page opens instantly from now on.
+        try {
+          let changed = false;
+          for (const item of [...this.data.services, ...this.data.features]) {
+            if (item && typeof item.image === "string" && item.image.length > 200000) {
+              const small = await compactStoredImage(item.image);
+              if (small !== item.image) { item.image = small; changed = true; }
+            }
+          }
+          if (changed) {
+            await setDoc(docRef, {
+              services: this.data.services,
+              features: this.data.features,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
+        } catch (_) { /* compaction is best-effort */ }
 
         // If remote features were corrupted (e.g. <= 2 items), immediately heal Firestore doc
         if (!hasValidFeatures || !hasValidServices) {

@@ -1,7 +1,7 @@
 import { onAuthStateChanged, logout } from "../services/authService.js";
 import { getDocument } from "../services/firestoreService.js";
 import { getRedirectUrlForRole } from "./login.js?v=login2";
-import { protectRoute } from "./middleware.js";
+import { protectRoute } from "./middleware.js?v=mid2";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebase.js";
 

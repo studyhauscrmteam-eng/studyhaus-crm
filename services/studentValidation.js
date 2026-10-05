@@ -32,33 +32,52 @@ export const validateStudentData = async (data) => {
     }
   }
 
-  // Duplicate Checks in both 'students' and 'admissions'
-  // Only run this if it's NOT a student (Admins have permission to query collections)
-  if (!data.isStudentSubmission) {
-    await checkDuplicates(data.phone, data.email);
+  // Duplicate checks in both 'students' and 'admissions'.
+  // Admin submissions AND website/student submissions both get checked so the
+  // same phone number or email can never exist twice. For student
+  // self-submissions the student's own pending record (same uid) is excluded.
+  // NOTE: students can only read their own doc per Firestore rules, so if the
+  // check fails on permissions for a student submission we let it through —
+  // the admin-side approval step re-checks with staff permissions and blocks
+  // any duplicate from ever reaching the main students list.
+  const isStudent = !!data.isStudentSubmission;
+  try {
+    await checkDuplicates(data.phone, data.email, isStudent ? data.uid || data._selfUid || null : null);
+  } catch (e) {
+    if (isStudent && /permission|denied|insufficient/i.test(e?.message || "")) {
+      // fall through — enforced again at approval time by staff
+    } else {
+      throw e;
+    }
   }
   return true;
 };
 
 /**
  * Checks if phone or email already exists in system.
+ * Email comparison is case-insensitive (stored lowercased).
  */
-const checkDuplicates = async (phone, email) => {
+const checkDuplicates = async (phone, email, excludeId = null) => {
+  const normEmail = email && String(email).trim() !== "" ? String(email).trim().toLowerCase() : "";
   const collections = ["students", "admissions"];
-  
+
   for (const colName of collections) {
     // Check phone
     const phoneQ = query(collection(db, colName), where("phone", "==", phone));
     const phoneSnap = await getDocs(phoneQ);
-    if (!phoneSnap.empty) {
+    const phoneDup = phoneSnap.docs.find(d => d.id !== excludeId);
+    if (phoneDup) {
       throw new Error(`Phone number ${phone} is already registered.`);
     }
 
-    // Check email if provided
-    if (email && email.trim() !== "") {
-      const emailQ = query(collection(db, colName), where("email", "==", email));
+    // Check email if provided (case-insensitive: stored lowercased; the
+    // exact query below is indexed and instant no matter how big the data
+    // grows — never full-scan the collections here).
+    if (normEmail) {
+      const emailQ = query(collection(db, colName), where("email", "==", normEmail));
       const emailSnap = await getDocs(emailQ);
-      if (!emailSnap.empty) {
+      const dup = emailSnap.docs.find(d => d.id !== excludeId);
+      if (dup) {
         throw new Error(`Email ${email} is already registered.`);
       }
     }

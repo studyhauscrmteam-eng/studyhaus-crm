@@ -1,4 +1,5 @@
 import { listenToOldStudents, restoreOldStudent, updateOldStudentFee, updateOldStudentPosition } from "./oldStudentService.js";
+import { permanentlyDeleteStudent } from "./studentService.js?v=login6";
 import { generateOldStudentsPDF } from "./pdfService.js";
 
 let allOldStudents = [];
@@ -11,6 +12,7 @@ export const initOldStudentAdminUI = () => {
   if (role === "Student") return; // Blocked
 
   const canRestore = (role === "Owner/Admin" || role === "Manager");
+  const canErase = (role === "Owner/Admin");
 
   container.innerHTML = `
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -73,7 +75,7 @@ export const initOldStudentAdminUI = () => {
   `;
 
   // Attach Listeners
-  const renderList = () => renderOldStudents(canRestore);
+  const renderList = () => renderOldStudents(canRestore, canErase);
   document.getElementById("old-search").addEventListener("input", renderList);
   document.getElementById("old-filter-reason").addEventListener("change", renderList);
   document.getElementById("old-filter-position").addEventListener("change", renderList);
@@ -156,7 +158,7 @@ const getFilteredOldStudents = () => {
   return filtered;
 };
 
-const renderOldStudents = (canRestore) => {
+const renderOldStudents = (canRestore, canErase) => {
   const tbody = document.getElementById("old-tbody");
   if (!tbody) return;
 
@@ -173,6 +175,21 @@ const renderOldStudents = (canRestore) => {
       const res = await restoreOldStudent(id);
       if (!res.success) window.showToast("Error restoring student: " + res.error, "error");
     }
+  };
+
+  window.handlePermanentDeleteOld = async (id, name) => {
+    const first = await window.showCustomConfirm(
+      "Delete Permanently?",
+      `Permanently delete <b>${name}</b>?<br><br>This erases the record completely. <b>This cannot be undone.</b>`,
+      "Continue",
+      true
+    );
+    if (!first) return;
+    const second = await window.showCustomConfirm("Final Confirmation", `Really erase <b>${name}</b> forever?`, "Delete Forever", true);
+    if (!second) return;
+    const res = await permanentlyDeleteStudent(id);
+    if (res.success) window.showToast(`Permanently deleted ${name}.`, "success");
+    else window.showToast("Error: " + res.error, "error");
   };
 
   window.handleUpdatePendingFee = async (id, amount) => {
@@ -214,7 +231,10 @@ const renderOldStudents = (canRestore) => {
         </td>
         ${canRestore ? `
         <td>
-          <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="window.handleRestoreStudent('${s.id}', '${s.name}')">Restore</button>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="window.handleRestoreStudent('${s.id}', '${s.name}')">Restore</button>
+            ${canErase ? `<button class="btn btn-ghost" style="padding:0.25rem 0.5rem; font-size:0.75rem; color:var(--danger);" onclick="window.handlePermanentDeleteOld('${s.id}', '${(s.name || '').replace(/'/g, "\\'")}')">Delete</button>` : ''}
+          </div>
         </td>
         ` : ""}
       </tr>

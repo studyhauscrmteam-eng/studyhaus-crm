@@ -16,6 +16,13 @@ export const protectRoute = (rawRole, path) => {
   // If unauthorized page, anyone logged in can view it (usually to see the "Go Back" button)
   if (path.includes("unauthorized.html")) return;
 
+  // Student portal is students-only. Staff (including Owner) are bounced to
+  // their own dashboard — no viewing, no testing inside.
+  if (path.includes("/student/") && role !== ROLES.STUDENT) {
+    window.location.href = getDefaultRoute(role);
+    return;
+  }
+
   // Enforce URL path restrictions based on folder structure
   let isAllowed = false;
 

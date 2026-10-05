@@ -37,8 +37,7 @@ export const PERMISSIONS = {
     "student-attendance",
     "student-complaints",
     "student-profile",
-    "notifications",
-    "settings"
+    "notifications"
   ]
 };
 
